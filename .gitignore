@@ -1,15 +1,14 @@
-# Remix compiler artifacts
-**/artifacts/
-**/artifacts/**
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/.env
 
-# Remix plugin state folders
-deps/
-states/
-
-# Debug info
-*.dbg.json
-*.tsbuildinfo
-
-# Optional
+# Node / Replit
+node_modules/
 .env
 .env.local
+
+# OS
+.DS_Store
+Thumbs.db

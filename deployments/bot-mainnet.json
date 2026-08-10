@@ -1,0 +1,12 @@
+{
+  "network": "BOT Chain Mainnet",
+  "chainId": 677,
+  "rpc": "https://rpc.botchain.ai",
+  "explorer": "https://scan.botchain.ai",
+  "deployer": "FILL_IN",
+  "Reputation":    "FILL_IN",
+  "AssetRegistry": "FILL_IN",
+  "LeaseEscrow":   "FILL_IN",
+  "ProofRouter":   "FILL_IN",
+  "deployedAt": "FILL_IN_DATE"
+}
