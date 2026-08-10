@@ -3,6 +3,7 @@ contracts/out/
 contracts/cache/
 contracts/broadcast/
 contracts/.env
+contracts/lib
 
 # Node / Replit
 node_modules/
