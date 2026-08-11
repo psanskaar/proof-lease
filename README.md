@@ -10,10 +10,10 @@ Built for **BOT Chain Builder Challenge #2** - AI x RWA track.
 
 | | Testnet (Bohr) | Mainnet |
 |---|---|---|
-| **AssetRegistry** | [0xE147...Ce6f](https://scan.bohr.life/address/0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f) | FILL_AFTER_DEPLOY |
-| **LeaseEscrow** | [0x8f4a...DC4](https://scan.bohr.life/address/0x8f4a193B4DeAaF619d46b2f4934a9557169AFdC4) | FILL_AFTER_DEPLOY |
-| **ProofRouter** | [0xe3A6...364](https://scan.bohr.life/address/0xe3A60feE5562108cAFd72e4e0f4271a5757c4364) | FILL_AFTER_DEPLOY |
-| **Reputation** | [0x3872...BAa](https://scan.bohr.life/address/0x3872A0D2EFEe103396eB8CE5c35f09FeE1fAFBAa) | FILL_AFTER_DEPLOY |
+| **AssetRegistry** | [0xE147...Ce6f](https://scan.bohr.life/address/0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f) | coming after gas support |
+| **LeaseEscrow** | [0x8f4a...DC4](https://scan.bohr.life/address/0x8f4a193B4DeAaF619d46b2f4934a9557169AFdC4) | coming after gas support |
+| **ProofRouter** | [0xe3A6...364](https://scan.bohr.life/address/0xe3A60feE5562108cAFd72e4e0f4271a5757c4364) | coming after gas support |
+| **Reputation** | [0x3872...BAa](https://scan.bohr.life/address/0x3872A0D2EFEe103396eB8CE5c35f09FeE1fAFBAa) | coming after gas support |
 
 ### Live Testnet Transactions
 
@@ -30,15 +30,7 @@ Built for **BOT Chain Builder Challenge #2** - AI x RWA track.
 
 ## How It Works
 
-```
-Provider registers machine -> AI scores risk -> AI generates quote
--> Buyer escrows BOT -> Provider sends heartbeat proofs each epoch
--> AI agent evaluates proof -> Compliant: BOT released to provider
-                            -> Breach: epoch payment refunded to buyer
--> Lease completes -> Reputation score updated on-chain
-```
-
-The AI agent (Claude Sonnet) handles three jobs:
+The AI agent handles three jobs:
 - **Risk scoring** - evaluates provider history, heartbeat freshness, attestation
 - **Quote generation** - prices capacity against market rates with rationale
 - **Epoch settlement** - calls settleEpoch() based on proof validity
@@ -47,7 +39,7 @@ The agent is policy-bounded. It can only call settleEpoch(). It cannot move fund
 
 ---
 
-## Architecture
+## Contracts
 
 ```
 contracts/
@@ -61,18 +53,11 @@ contracts/
     ProofLease.t.sol             - 15 Foundry tests, all passing
   script/
     Deploy.s.sol                 - single-command deployment
-
-agent/
-  index.js                       - demo agent loop
-  riskScorer.js                  - Claude API risk assessment
-  quoteEngine.js                 - Claude API dynamic pricing
-  settlementBot.js               - on-chain settlement via ethers.js
-
-frontend/
-  app/
-    page.tsx                     - marketplace landing
-    verify/page.tsx              - proof hash verifier
+deployments/
+  bohr-testnet.json              - testnet contract addresses
 ```
+
+AI agent and frontend are in active development and will be added before the submission deadline.
 
 ---
 
@@ -134,7 +119,7 @@ curl -L https://foundry.paradigm.xyz | bash && foundryup
 # Clone and install deps
 git clone https://github.com/psanskaar/proof-lease
 cd proof-lease/contracts
-forge install OpenZeppelin/openzeppelin-contracts --no-commit
+forge install OpenZeppelin/openzeppelin-contracts
 
 # Run tests
 forge test -vvv
@@ -166,8 +151,8 @@ forge script script/Deploy.s.sol \
 ## Stack
 
 - **Contracts** - Solidity 0.8.24, Foundry, OpenZeppelin
-- **AI Agent** - Claude Sonnet (Anthropic), ethers.js v6, Node.js
-- **Frontend** - Next.js 14, wagmi v2, viem, RainbowKit, Tailwind CSS
+- **AI Agent** - LLM-powered, ethers.js v6, Node.js (in development)
+- **Frontend** - Next.js 14, wagmi v2, viem, RainbowKit, Tailwind CSS (in development)
 - **Deploy** - GitHub Codespaces, Foundry forge script, Vercel
 
 ---
@@ -175,4 +160,3 @@ forge script script/Deploy.s.sol \
 ## Deployments
 
 See [deployments/bohr-testnet.json](./deployments/bohr-testnet.json) for the full testnet deployment record.
-Mainnet deployment record will be added at [deployments/bot-mainnet.json](./deployments/bot-mainnet.json) after gas support is received.
