@@ -1,0 +1,180 @@
+{
+  "proofs": [
+    {
+      "id": "1:2:0x3fdd7717087db7431260ed9390fabee3754b34e2055aef6b1e8bfecb65aba1b2",
+      "leaseId": "1",
+      "epoch": "2",
+      "compliant": true,
+      "rawProofData": "live-stress-lease-1-epoch-2-compliant-heartbeat-ok",
+      "dataHash": "0x3fdd7717087db7431260ed9390fabee3754b34e2055aef6b1e8bfecb65aba1b2",
+      "status": "settled",
+      "createdAt": "2026-08-11T00:04:01.669Z",
+      "proofHash": "0xc4e59eed488808550b7da4941cc34404a41f67dfb021e092859a75c1febe586c",
+      "proofMode": "live",
+      "routerTxHash": "0x08d0392e639db8194d045ce0f29436d87dc91c37daaba40ded4434c6c49b5b3c",
+      "routerBlockNumber": 19428527,
+      "escrowTxHash": "0x949108ce236f225632a42ed6314a1b86d64fdee59bbdab76b3bb30565eda9ca0",
+      "escrowBlockNumber": 19428535,
+      "settlementEvent": {
+        "leaseId": "1",
+        "epoch": "2",
+        "compliant": true,
+        "released": "1000000000000000"
+      }
+    },
+    {
+      "id": "1:3:0x40933824c85974def5274f09b39c08e6312bcbc541f2f27bc5cea744c432ec5e",
+      "leaseId": "1",
+      "epoch": "3",
+      "compliant": false,
+      "rawProofData": "live-stress-lease-1-epoch-3-breach-heartbeat-gap",
+      "dataHash": "0x40933824c85974def5274f09b39c08e6312bcbc541f2f27bc5cea744c432ec5e",
+      "status": "settled",
+      "createdAt": "2026-08-11T00:04:13.892Z",
+      "proofHash": "0x42e8007de8518f215dffdae50b5a16ca8a9ce83cec099e324bd008929f33c5b6",
+      "proofMode": "live",
+      "routerTxHash": "0x8482461786cb6db39bde776a3d31f0df421de2957b0daa02ba2234d3a951a7ff",
+      "routerBlockNumber": 19428543,
+      "escrowTxHash": "0x9757522f360e6d60d4a21799d4adc445f9a9bd82ad473872a2d063cf3c42a178",
+      "escrowBlockNumber": 19428551,
+      "settlementEvent": {
+        "leaseId": "1",
+        "epoch": "3",
+        "compliant": false,
+        "released": "0"
+      }
+    },
+    {
+      "id": "1:4:0x292e10418385f25c211388735dcae1892441841cd9ddd7fbb737466839f49ccf",
+      "leaseId": "1",
+      "epoch": "4",
+      "compliant": true,
+      "rawProofData": "live-stress-lease-1-epoch-4-compliant-recovered",
+      "dataHash": "0x292e10418385f25c211388735dcae1892441841cd9ddd7fbb737466839f49ccf",
+      "status": "settled",
+      "createdAt": "2026-08-11T00:04:26.084Z",
+      "proofHash": "0x2b483d9b34356f4507edcfb91ed35250c96c0412f2cd086636300a59ce2757f1",
+      "proofMode": "live",
+      "routerTxHash": "0x416dbe6f70b3739c4c814137977d046f748aab1480551cf2393b8dec4cfc1fad",
+      "routerBlockNumber": 19428559,
+      "escrowTxHash": "0x6af5109d04b24bcd8a9917fcae29dbf346fa67249b467c9ba23bff20f4186b42",
+      "escrowBlockNumber": 19428567,
+      "settlementEvent": {
+        "leaseId": "1",
+        "epoch": "4",
+        "compliant": true,
+        "released": "1000000000000000"
+      }
+    },
+    {
+      "id": "3:0:0x9f2d784dc6a270a4bcb129b31a952d10e8331a76dca0b399852f29fd2e9f929b",
+      "leaseId": "3",
+      "epoch": "0",
+      "compliant": true,
+      "rawProofData": "lease-3-epoch-0-ts-1786410000545-ok-true",
+      "dataHash": "0x9f2d784dc6a270a4bcb129b31a952d10e8331a76dca0b399852f29fd2e9f929b",
+      "status": "settled",
+      "createdAt": "2026-08-11T01:00:00.694Z",
+      "proofMode": "live",
+      "proofHash": "0x497e720278117242cc75311c963e8cb7024649566ebbbfafba1297955b481e24",
+      "routerTxHash": "0x422abe693a0a8e44644d5b20e417a602572b88c81629f0134647d3191dbb94b6",
+      "routerBlockNumber": 19433005,
+      "escrowTxHash": "0xc28024f469655ec28990cb85224cbf4fcc28a5d65fedf2bafac962e6080da593",
+      "escrowBlockNumber": 19433013,
+      "settlementEvent": {
+        "leaseId": "3",
+        "epoch": "0",
+        "compliant": true,
+        "released": "13300000000000000"
+      }
+    },
+    {
+      "id": "3:1:0x281ed5acfe032bfe8c465aeec6b21f38fd9a82422e927411faa31153e6fdd2f1",
+      "leaseId": "3",
+      "epoch": "1",
+      "compliant": true,
+      "rawProofData": "lease-3-epoch-1-ts-1786410008368-ok-true",
+      "dataHash": "0x281ed5acfe032bfe8c465aeec6b21f38fd9a82422e927411faa31153e6fdd2f1",
+      "status": "settled",
+      "createdAt": "2026-08-11T01:00:08.514Z",
+      "proofMode": "live",
+      "proofHash": "0x43e373c37309300bac5ae28c3baa126bee6f6817725132f11de7549d2016b05b",
+      "routerTxHash": "0xaa0baf0312133c30afb90e2d06335a78928b173504ddcf7522b249047d3b02fd",
+      "routerBlockNumber": 19433016,
+      "escrowTxHash": "0xb05172d0433ffce9e86016a62c4cd12cb2e2544ff30a6cb0457a2b589fb3fa59",
+      "escrowBlockNumber": 19433024,
+      "settlementEvent": {
+        "leaseId": "3",
+        "epoch": "1",
+        "compliant": true,
+        "released": "13300000000000000"
+      }
+    },
+    {
+      "id": "3:2:0xbd7c70e6265bd35f207afb7ba8fac14ef4c5a92f5c410b1268baf709b3a68255",
+      "leaseId": "3",
+      "epoch": "2",
+      "compliant": false,
+      "rawProofData": "lease-3-epoch-2-ts-1786410020598-ok-false",
+      "dataHash": "0xbd7c70e6265bd35f207afb7ba8fac14ef4c5a92f5c410b1268baf709b3a68255",
+      "status": "settled",
+      "createdAt": "2026-08-11T01:00:20.745Z",
+      "proofMode": "live",
+      "proofHash": "0x51c24e85d5722840e8457ac712b362a588d7b94aa29f79b080c69c2e8fecd2d7",
+      "routerTxHash": "0x019401fb2d137c8e53030f0cf7a8b5d874343090c337b009a7f893ea3259b55c",
+      "routerBlockNumber": 19433032,
+      "escrowTxHash": "0x21f3ba41bb949466703549740982717621f2dcc68200bff0de27f788d130d1c1",
+      "escrowBlockNumber": 19433041,
+      "settlementEvent": {
+        "leaseId": "3",
+        "epoch": "2",
+        "compliant": false,
+        "released": "0"
+      }
+    },
+    {
+      "id": "3:3:0x92082b8911a3ed8785abdce6aa553d6f4e7d38f48ff42fea1a4e17798346b990",
+      "leaseId": "3",
+      "epoch": "3",
+      "compliant": true,
+      "rawProofData": "lease-3-epoch-3-ts-1786410033178-ok-true",
+      "dataHash": "0x92082b8911a3ed8785abdce6aa553d6f4e7d38f48ff42fea1a4e17798346b990",
+      "status": "settled",
+      "createdAt": "2026-08-11T01:00:33.324Z",
+      "proofMode": "live",
+      "proofHash": "0x8a7723f2cead4947b0320bd52c66686d257bf2140f35359278ecde318b66bfe1",
+      "routerTxHash": "0x749a0fe1149481271b9325c5c7796d7340ff68debf9b037906774031aa5435af",
+      "routerBlockNumber": 19433049,
+      "escrowTxHash": "0x896e1b75080f39eeaab7703881d69a0769f8f558b8bcd57d1f70956ad4072060",
+      "escrowBlockNumber": 19433057,
+      "settlementEvent": {
+        "leaseId": "3",
+        "epoch": "3",
+        "compliant": true,
+        "released": "13300000000000000"
+      }
+    },
+    {
+      "id": "3:4:0xed65c3b4b67105bdccad05538601a70a4a3c4e885e639467e2370a1c346dd83c",
+      "leaseId": "3",
+      "epoch": "4",
+      "compliant": true,
+      "rawProofData": "lease-3-epoch-4-ts-1786410045345-ok-true",
+      "dataHash": "0xed65c3b4b67105bdccad05538601a70a4a3c4e885e639467e2370a1c346dd83c",
+      "status": "settled",
+      "createdAt": "2026-08-11T01:00:45.489Z",
+      "proofMode": "live",
+      "proofHash": "0xad36d3ae1a7baf1a3236cb66bd10f26f732212835d6e9be2841b92f93e033ebb",
+      "routerTxHash": "0xd738ab2b17b06e8ff57c655cd9be8e9f76f41d0d5f55cd7b73c3d70009582ddd",
+      "routerBlockNumber": 19433065,
+      "escrowTxHash": "0x026a11c3239ec9ea0e93cd8e449a3b1dffb9d97271e03babcad309aa35eb6ac3",
+      "escrowBlockNumber": 19433073,
+      "settlementEvent": {
+        "leaseId": "3",
+        "epoch": "4",
+        "compliant": true,
+        "released": "13300000000000000"
+      }
+    }
+  ]
+}
