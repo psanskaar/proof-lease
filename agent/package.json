@@ -1,0 +1,15 @@
+{
+  "name": "proof-lease-agent",
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test test/test.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "ethers": "^6.17.0",
+    "groq-sdk": "^1.5.0"
+  }
+}
