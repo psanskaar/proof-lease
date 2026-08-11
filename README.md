@@ -31,11 +31,11 @@ Built for **BOT Chain Builder Challenge #2** - AI x RWA track.
 ## How It Works
 
 The AI agent handles three jobs:
-- **Risk scoring** - evaluates provider history, heartbeat freshness, attestation
-- **Quote generation** - prices capacity against market rates with rationale
-- **Epoch settlement** - calls settleEpoch() based on proof validity
+- **Risk scoring** - evaluates provider history, heartbeat freshness, and attestation URI
+- **Quote generation** - prices capacity against market rates with a rationale, using Groq (llama-3.3-70b) with a deterministic local fallback
+- **Epoch settlement** - submits proofs to ProofRouter then calls `settleEpoch()` based on compliance; breach epochs refund the buyer in full
 
-The agent is policy-bounded. It can only call settleEpoch(). It cannot move funds, modify contracts, or override dispute resolution. All fund movements go through the pull-payment withdrawal pattern.
+The agent is policy-bounded. It can only call `settleEpoch()`. It cannot move funds, modify contracts, or override dispute resolution. All fund movements go through the pull-payment withdrawal pattern.
 
 ---
 
@@ -57,7 +57,26 @@ deployments/
   bohr-testnet.json              - testnet contract addresses
 ```
 
-AI agent and frontend are in active development and will be added before the submission deadline.
+---
+
+## Agent
+
+```
+agent/
+  index.js          - demo runner, wires all three stages together
+  riskScorer.js     - Groq + local fallback risk scoring
+  quoteEngine.js    - Groq + local fallback quote generation
+  settlementBot.js  - proof submission and epoch settlement
+  proofStore.js     - file-locked proof persistence with keccak verification
+  data/proofs.json  - proof records from live testnet runs
+  test/test.js      - 9 Node.js tests covering all modules
+  .env.example      - environment variable reference
+```
+
+The agent runs in two modes controlled by `SETTLEMENT_MODE`:
+
+- **`simulated`** (default) - full proof pipeline with no chain writes; safe for testing
+- **`live`** - submits to ProofRouter and calls `settleEpoch()` on-chain
 
 ---
 
@@ -71,13 +90,13 @@ BOT Chain's 0.75-second blocks and near-zero fees make epoch-by-epoch proof sett
 
 ## Smart Contract Design Decisions
 
-**Pull payment pattern** - pendingWithdrawals mapping prevents reentrancy. Funds are queued, not pushed.
+**Pull payment pattern** - `pendingWithdrawals` mapping prevents reentrancy. Funds are queued, not pushed.
 
-**Epoch-ordered settlement** - require(epoch == lease.epochsSettled) enforces strict sequence. No skipping, no replaying.
+**Epoch-ordered settlement** - `require(epoch == lease.epochsSettled)` enforces strict sequence. No skipping, no replaying.
 
-**Replay protection** - EpochStatus.Pending check fires before epoch-order check, so a replay attempt on a settled epoch returns "Already settled" not a misleading "Wrong epoch".
+**Replay protection** - `EpochStatus.Pending` check fires before the epoch-order check, so a replay attempt on a settled epoch returns "Already settled" not a misleading "Wrong epoch".
 
-**Agent oracle separation** - only the agentOracle address can call settleEpoch(). The agent wallet has no other permissions. Owner retains dispute resolution via resolveDispute().
+**Agent oracle separation** - only the `agentOracle` address can call `settleEpoch()`. The agent wallet has no other permissions. Owner retains dispute resolution via `resolveDispute()`.
 
 **2% platform fee** - deducted from provider payment on compliant epochs only. Breach epochs refund the full epoch amount to the buyer.
 
@@ -112,6 +131,8 @@ Ran 15 tests for test/ProofLease.t.sol:ProofLeaseTest
 
 ## Build and Deploy
 
+### Contracts
+
 ```bash
 # Install Foundry
 curl -L https://foundry.paradigm.xyz | bash && foundryup
@@ -135,6 +156,35 @@ forge script script/Deploy.s.sol \
   --broadcast -vvvv
 ```
 
+### Agent
+
+```bash
+cd agent
+cp .env.example .env
+# Fill in GROQ_API_KEY and PRIVATE_KEY in .env
+
+npm install
+
+# Run in simulated mode (no chain writes)
+npm start
+
+# Run tests
+npm test
+```
+
+The `.env` file controls the run mode via `SETTLEMENT_MODE`:
+
+```bash
+# Simulated - full proof pipeline, no chain writes (default)
+SETTLEMENT_MODE=simulated
+
+# Live - submits to ProofRouter and settles epochs on-chain
+# Requires PRIVATE_KEY, RPC_URL, LEASE_ESCROW, and PROOF_ROUTER to be set
+SETTLEMENT_MODE=live
+```
+
+The testnet contract addresses are pre-filled in `.env.example` so live mode works against Bohr testnet out of the box once you add your key.
+
 ---
 
 ## Network Config
@@ -151,9 +201,8 @@ forge script script/Deploy.s.sol \
 ## Stack
 
 - **Contracts** - Solidity 0.8.24, Foundry, OpenZeppelin
-- **AI Agent** - LLM-powered, ethers.js v6, Node.js (in development)
-- **Frontend** - Next.js 14, wagmi v2, viem, RainbowKit, Tailwind CSS (in development)
-- **Deploy** - GitHub Codespaces, Foundry forge script, Vercel
+- **AI Agent** - Node.js, ethers.js v6, Groq (llama-3.3-70b) with local fallback
+- **Frontend** - in development
 
 ---
 
