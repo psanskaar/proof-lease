@@ -5,7 +5,7 @@ import { parseAbiItem } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import {
   CheckCircle, XCircle, ExternalLink, ArrowLeft,
-  Loader2, RefreshCw, Brain, Shield, Clock, Cpu, ChevronDown, ChevronUp,
+  Loader2, RefreshCw, Brain, Shield, Clock, Cpu,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -47,26 +47,22 @@ function timeAgo(iso: string) {
 function shortHash(h: string) { return `${h.slice(0, 10)}…${h.slice(-6)}` }
 
 function SettlementCard({ entry }: { entry: MergedEntry }) {
-  const [reasoningOpen, setReasoningOpen] = useState(false)
-
   return (
-    <div className={`rounded-xl border p-5 transition ${
-      entry.compliant
-        ? 'bg-green-950/20 border-green-900/50'
-        : 'bg-red-950/20 border-red-900/50'
+    <div className={`rounded-xl border p-5 ${
+      entry.compliant ? 'bg-green-950/20 border-green-900/50' : 'bg-red-950/20 border-red-900/50'
     }`}>
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           {entry.compliant
-            ? <CheckCircle size={20} className="text-green-400 shrink-0" />
-            : <XCircle    size={20} className="text-red-400 shrink-0" />}
+            ? <CheckCircle size={20} className="text-green-400 shrink-0"/>
+            : <XCircle    size={20} className="text-red-400 shrink-0"/>}
           <div>
             <div className="font-semibold text-sm">
               Lease #{entry.leaseId} · Epoch {entry.epoch}
             </div>
             <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-              <Cpu size={11} />{entry.hardwareClass || '—'}
+              <Cpu size={11}/>{entry.hardwareClass || '—'}
               {entry.region && <><span className="mx-1">·</span>{entry.region}</>}
             </div>
           </div>
@@ -98,9 +94,7 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
           <div className="text-xs text-gray-500 mb-0.5 flex items-center justify-center gap-1">
             <Clock size={10}/>Heartbeat
           </div>
-          <div className={`font-bold text-sm ${
-            (entry.staleSecs || 0) > 300 ? 'text-red-400' : 'text-green-400'
-          }`}>
+          <div className={`font-bold text-sm ${(entry.staleSecs || 0) > 300 ? 'text-red-400' : 'text-green-400'}`}>
             {entry.staleSecs !== undefined ? `${entry.staleSecs}s ago` : '—'}
           </div>
         </div>
@@ -116,43 +110,26 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         </div>
       </div>
 
-      {/* Groq reasoning — always visible, expandable */}
-      {entry.groqReasoning ? (
-        <div className="bg-gray-900/80 rounded-lg border border-gray-700/60 mb-3 overflow-hidden">
-          <button
-            onClick={() => setReasoningOpen(o => !o)}
-            className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-gray-800/40 transition"
-          >
-            <div className="flex items-center gap-2 text-xs text-blue-400 font-medium">
-              <Brain size={13} />Groq AI Reasoning
+      {/* Groq reasoning — always fully visible */}
+      {entry.groqReasoning && (
+        <div className="bg-gray-900/80 rounded-lg border border-gray-700/60 p-3 mb-3">
+          <div className="flex items-center gap-2 text-xs text-blue-400 font-medium mb-2">
+            <Brain size={13}/>Groq AI Reasoning
+          </div>
+          <p className="text-xs text-gray-300 leading-relaxed">
+            {entry.groqReasoning}
+          </p>
+          {entry.riskReasons && entry.riskReasons.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {entry.riskReasons.map(r => (
+                <span key={r} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
+                  {r}
+                </span>
+              ))}
             </div>
-            {reasoningOpen
-              ? <ChevronUp size={14} className="text-gray-500" />
-              : <ChevronDown size={14} className="text-gray-500" />}
-          </button>
-          {reasoningOpen && (
-            <div className="px-3 pb-3 border-t border-gray-700/60 pt-2.5">
-              <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">
-                {entry.groqReasoning}
-              </p>
-              {entry.riskReasons && entry.riskReasons.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {entry.riskReasons.map(r => (
-                    <span key={r} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
-                      {r}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {!reasoningOpen && (
-            <p className="px-3 pb-3 text-xs text-gray-500 line-clamp-2">
-              {entry.groqReasoning}
-            </p>
           )}
         </div>
-      ) : null}
+      )}
 
       {/* Links */}
       <div className="flex flex-wrap gap-3 text-xs">
@@ -233,14 +210,10 @@ export default function ActivityPage() {
   }, [fetchAgentData, fetchChainEvents])
 
   useEffect(() => { refresh() }, [publicClient])
-
-  // 15s auto-refresh
   useEffect(() => {
     const t = setInterval(refresh, 15_000)
     return () => clearInterval(t)
   }, [refresh])
-
-  // Countdown display
   useEffect(() => {
     const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1_000)
     return () => clearInterval(t)
@@ -248,23 +221,19 @@ export default function ActivityPage() {
 
   const entries = useMemo<MergedEntry[]>(() => {
     const map = new Map<string, MergedEntry>()
+    // Only start with agent proofs — these have full data
     agentProofs.forEach(p => {
-      map.set(`${p.leaseId}-${p.epoch}`, { ...p, key: `${p.leaseId}-${p.epoch}`, proofHash: p.proofHash ?? undefined })
+      map.set(`${p.leaseId}-${p.epoch}`, {
+        ...p, key: `${p.leaseId}-${p.epoch}`,
+        proofHash: p.proofHash ?? undefined,
+      })
     })
+    // Overlay chain TX hashes onto existing agent entries only
     chainEvents.forEach(e => {
       const key = `${e.leaseId}-${e.epoch}`
       const ex = map.get(key)
-      if (ex) {
-        map.set(key, { ...ex, ...e })
-      } else {
-        map.set(key, {
-          key, leaseId: e.leaseId, epoch: e.epoch, compliant: e.compliant,
-          proofHash: e.proofHash, txHash: e.txHash, blockNumber: e.blockNumber,
-          machineId: 0, hardwareClass: '', region: '', staleSecs: 0,
-          riskScore: 0, riskTier: 'MEDIUM', riskReasons: [], groqReasoning: '',
-          routerTxHash: null, escrowTxHash: e.txHash, settledAt: '', mode: 'live',
-        })
-      }
+      if (ex) map.set(key, { ...ex, ...e })
+      // Skip chain-only events with no agent data — they'd show all dashes
     })
     return [...map.values()].sort((a, b) => {
       if (a.settledAt && b.settledAt)
@@ -295,34 +264,26 @@ export default function ActivityPage() {
           <div>
             <h1 className="text-3xl font-bold mb-1">Agent Activity</h1>
             <p className="text-gray-400 text-sm">
-              Live feed of AI-verified epoch settlements — on-chain decisions with full Groq reasoning.
+              Live feed of AI-verified epoch settlements — full Groq reasoning shown for each.
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-600">
-              Refresh in {countdown}s
-            </span>
+            <span className="text-xs text-gray-600">Refresh in {countdown}s</span>
             <button onClick={refresh} disabled={loading}
               className="flex items-center gap-2 border border-gray-700 hover:border-gray-500 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50">
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''}/>
-              Refresh
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''}/>Refresh
             </button>
           </div>
         </div>
 
-        {/* Agent status */}
         {agentStatus && (
           <div className={`rounded-xl p-4 border mb-6 text-sm ${
-            agentStatus.lastError
-              ? 'bg-red-950/30 border-red-900/50'
-              : 'bg-green-950/30 border-green-900/50'
+            agentStatus.lastError ? 'bg-red-950/30 border-red-900/50' : 'bg-green-950/30 border-green-900/50'
           }`}>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full ${agentStatus.lastError ? 'bg-red-400' : 'bg-green-400'} animate-pulse`}/>
-                <span className="font-medium">
-                  Agent {agentStatus.lastError ? 'Error' : 'Online'}
-                </span>
+                <span className="font-medium">Agent {agentStatus.lastError ? 'Error' : 'Online'}</span>
                 <span className="text-gray-500 text-xs font-mono uppercase">{agentStatus.mode}</span>
               </div>
               <div className="flex gap-4 text-xs text-gray-400">
@@ -331,21 +292,14 @@ export default function ActivityPage() {
                 <span>Settled: {agentStatus.leasesSettled}</span>
               </div>
             </div>
-            {agentStatus.lastError ? (
-              <p className="text-xs text-red-400 mt-2">Error: {agentStatus.lastError}</p>
-            ) : agentStatus.lastTickStatus && (
-              <p className="text-xs text-gray-500 mt-2">Last: {agentStatus.lastTickStatus}</p>
-            )}
+            {agentStatus.lastError
+              ? <p className="text-xs text-red-400 mt-2">Error: {agentStatus.lastError}</p>
+              : agentStatus.lastTickStatus && (
+                <p className="text-xs text-gray-500 mt-2">Last: {agentStatus.lastTickStatus}</p>
+              )}
           </div>
         )}
 
-        {!AGENT_URL && (
-          <div className="bg-yellow-950/30 border border-yellow-900/50 rounded-xl p-4 mb-6 text-sm text-yellow-300">
-            <strong>NEXT_PUBLIC_AGENT_URL</strong> not set — AI reasoning unavailable.
-          </div>
-        )}
-
-        {/* Stats */}
         {entries.length > 0 && (
           <div className="grid grid-cols-3 gap-3 mb-6">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
@@ -363,11 +317,9 @@ export default function ActivityPage() {
           </div>
         )}
 
-        {/* Feed */}
         {loading && entries.length === 0 ? (
           <div className="flex items-center justify-center py-24 text-gray-500">
-            <Loader2 size={24} className="animate-spin mr-3"/>
-            Fetching agent data and chain events…
+            <Loader2 size={24} className="animate-spin mr-3"/>Fetching data…
           </div>
         ) : entries.length === 0 ? (
           <div className="text-center py-24 text-gray-500">
