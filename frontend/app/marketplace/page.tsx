@@ -94,7 +94,7 @@ function computeRisk(machine: Machine, reputationScore: number) {
 
   return {
     score, tier, reasons: reasons.slice(0, 3),
-    eligible: score >= 50, pricePerEpoch, discount, staleMins,
+    eligible: score >= 20, pricePerEpoch, discount, staleMins,
     suggestedMaxEpochs: score >= 80 ? 50 : score >= 50 ? 10 : 0,
   }
 }
