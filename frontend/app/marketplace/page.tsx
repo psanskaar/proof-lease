@@ -146,7 +146,7 @@ function MachineCard({ machineId, onLease }: {
             <MapPin size={12} />{machine.region}
           </div>
         </div>
-        <span className={`text-xs px-2 py-1 rounded-full font-mono font-bold ${TIER_STYLE[risk.tier]}`}>
+        <span className={`text-xs px-2 py-1 rounded-full font-mono font-bold ${TIER_STYLE[risk.tier as 'LOW' | 'MEDIUM' | 'HIGH']}`}>
           {risk.tier} RISK
         </span>
       </div>
