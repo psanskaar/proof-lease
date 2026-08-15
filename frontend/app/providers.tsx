@@ -5,17 +5,19 @@ import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
 import { defineChain } from 'viem'
 import '@rainbow-me/rainbowkit/styles.css'
 
-const botTestnet = defineChain({
-  id: 968,
-  name: 'BOT Chain Testnet',
+const botMainnet = defineChain({
+  id: 677,
+  name: 'BOT Chain',
   nativeCurrency: { name: 'BOT', symbol: 'BOT', decimals: 18 },
-  rpcUrls: { default: { http: ['https://rpc.bohr.life'] } },
-  blockExplorers: { default: { name: 'Bohr Scan', url: 'https://scan.bohr.life' } },
+  rpcUrls: { default: { http: ['https://rpc.botchain.ai'] } },
+  blockExplorers: {
+    default: { name: 'BOT Scan', url: 'https://scan.botchain.ai' },
+  },
 })
 
 const config = createConfig({
-  chains: [botTestnet],
-  transports: { [botTestnet.id]: http('https://rpc.bohr.life') },
+  chains: [botMainnet],
+  transports: { [botMainnet.id]: http('https://rpc.botchain.ai') },
   ssr: true,
 })
 
