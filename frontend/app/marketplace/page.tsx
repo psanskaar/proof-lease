@@ -88,7 +88,7 @@ function computeRisk(machine: Machine, reputationScore: number) {
   const marketRate = MARKET_RATES[machine.hardwareClass] ?? 0.3
   const hoursPerEpoch = 60 / 3600
   const basePerEpoch  = (marketRate * hoursPerEpoch) / 0.1          // 1 BOT = $0.10
-  const multiplier    = score >= 80 ? 0.85 : score >= 50 ? 0.75 : 0
+  const multiplier    = score >= 80 ? 0.85 : score >= 50 ? 0.75 : 0.65
   const pricePerEpoch = parseFloat((basePerEpoch * multiplier).toFixed(6))
   const discount      = Math.round((1 - multiplier) * 100)
 
