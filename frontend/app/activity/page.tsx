@@ -43,7 +43,7 @@ type ChainEvent = {
   blockNumber: bigint
 }
 
-type MergedEntry = AgentProof & Partial<ChainEvent> & { key: string }
+type MergedEntry = Omit<AgentProof, 'proofHash'> & Partial<ChainEvent> & { key: string; proofHash: string | null | undefined }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const TIER_STYLE = {
@@ -268,7 +268,7 @@ export default function ActivityPage() {
     // Start with agent proofs (richer data)
     agentProofs.forEach(p => {
       const key = `${p.leaseId}-${p.epoch}`
-      map.set(key, { ...p, key })
+      map.set(key, { ...p, key, proofHash: p.proofHash ?? undefined })
     })
 
     // Overlay chain events (adds txHash, blockNumber from chain)
