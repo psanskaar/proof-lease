@@ -4,8 +4,9 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "start": "node index.js",
-    "test": "node --test test/test.js"
+    "start": "node server.js",
+    "demo": "node index.js",
+    "dev": "node loop.js"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: prooflease-agent
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: SETTLEMENT_MODE
+        value: simulated
+      - key: POLL_MS
+        value: 30000
+      - key: HEARTBEAT_MAX
+        value: 300
+      - key: RPC_URL
+        value: https://rpc.bohr.life
+      - key: LEASE_ESCROW
+        value: 0x8f4a193B4DeAaF619d46b2f4934a9557169AFdC4
+      - key: PROOF_ROUTER
+        value: 0xe3A60feE5562108cAFd72e4e0f4271a5757c4364
+      - key: ASSET_REGISTRY
+        value: 0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f
+      - key: REPUTATION
+        value: 0x3872A0D2EFEe103396eB8CE5c35f09FeE1fAFBAa
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PRIVATE_KEY
+        sync: false

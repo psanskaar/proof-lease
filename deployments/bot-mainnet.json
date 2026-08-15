@@ -3,10 +3,9 @@
   "chainId": 677,
   "rpc": "https://rpc.botchain.ai",
   "explorer": "https://scan.botchain.ai",
-  "deployer": "FILL_IN",
-  "Reputation":    "FILL_IN",
-  "AssetRegistry": "FILL_IN",
-  "LeaseEscrow":   "FILL_IN",
-  "ProofRouter":   "FILL_IN",
-  "deployedAt": "FILL_IN_DATE"
+  "deployer": "0x72CD637431ea7cE9374CAdeb4F036ae14a6f3945",
+  "Reputation":    "0x3872A0D2EFEe103396eB8CE5c35f09FeE1fAFBAa",
+  "AssetRegistry": "0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f",
+  "LeaseEscrow":   "0x8f4a193B4DeAaF619d46b2f4934a9557169AFdC4",
+  "ProofRouter":   "0xe3A60feE5562108cAFd72e4e0f4271a5757c4364"
 }
