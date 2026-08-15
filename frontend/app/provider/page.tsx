@@ -1,224 +1,615 @@
 'use client'
-import { useState } from 'react'
-import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt } from 'wagmi'
+import { useState, useMemo } from 'react'
+import {
+  useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt,
+} from 'wagmi'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { parseEther, keccak256, toBytes } from 'viem'
-import { Server, CheckCircle, ExternalLink, ArrowLeft, Loader2, Plus, AlertCircle, Clock } from 'lucide-react'
+import { parseEther, keccak256, toBytes, formatEther } from 'viem'
+import {
+  Cpu, MapPin, ExternalLink, ArrowLeft, Loader2, CheckCircle,
+  Shield, Copy, AlertTriangle, Clock, Activity,
+} from 'lucide-react'
 import Link from 'next/link'
 
-const REGISTRY = process.env.NEXT_PUBLIC_ASSET_REGISTRY as `0x${string}`
-const EXPLORER = process.env.NEXT_PUBLIC_EXPLORER || 'https://scan.bohr.life'
+const REGISTRY   = process.env.NEXT_PUBLIC_ASSET_REGISTRY as `0x${string}`
+const ESCROW     = process.env.NEXT_PUBLIC_LEASE_ESCROW   as `0x${string}`
+const REPUTATION = process.env.NEXT_PUBLIC_REPUTATION     as `0x${string}`
+const EXPLORER   = process.env.NEXT_PUBLIC_EXPLORER || 'https://scan.bohr.life'
 
 const REGISTRY_ABI = [
-  { name: 'registerMachine', type: 'function', stateMutability: 'payable',
-    inputs: [
-      { name: 'hardwareClass',  type: 'string'  },
-      { name: 'region',         type: 'string'  },
-      { name: 'attestationURI', type: 'string'  },
-      { name: 'hardwareHash',   type: 'bytes32' },
-    ], outputs: [{ type: 'uint256' }] },
-  { name: 'getProviderMachines', type: 'function', stateMutability: 'view',
-    inputs: [{ name: 'provider', type: 'address' }], outputs: [{ type: 'uint256[]' }] },
+  { name: 'machineCount', type: 'function', stateMutability: 'view',
+    inputs: [], outputs: [{ type: 'uint256' }] },
   { name: 'getMachine', type: 'function', stateMutability: 'view',
     inputs: [{ name: 'machineId', type: 'uint256' }],
     outputs: [{ type: 'tuple', components: [
-      { name: 'provider',       type: 'address' },
-      { name: 'hardwareHash',   type: 'bytes32' },
-      { name: 'region',         type: 'string'  },
-      { name: 'hardwareClass',  type: 'string'  },
-      { name: 'attestationURI', type: 'string'  },
-      { name: 'registeredAt',   type: 'uint256' },
-      { name: 'lastHeartbeat',  type: 'uint256' },
-      { name: 'status',         type: 'uint8'   },
+      { name: 'provider',       type: 'address'  },
+      { name: 'hardwareHash',   type: 'bytes32'  },
+      { name: 'region',         type: 'string'   },
+      { name: 'hardwareClass',  type: 'string'   },
+      { name: 'attestationURI', type: 'string'   },
+      { name: 'registeredAt',   type: 'uint256'  },
+      { name: 'lastHeartbeat',  type: 'uint256'  },
+      { name: 'status',         type: 'uint8'    },
     ]}] },
 ] as const
 
-const HARDWARE_CLASSES = ['GPU-H100','GPU-A100','GPU-RTX4090','GPU-RTX3090','CPU-64C','CPU-32C','CPU-16C']
-const REGIONS          = ['us-east','us-west','eu-central','eu-west','asia-pacific','asia-south','latam']
-const STATUS_LABEL     = ['Unregistered','Active','Suspended']
-const STATUS_COLOR     = ['text-gray-400','text-green-400','text-yellow-400']
+const REPUTATION_ABI = [
+  { name: 'getScore', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'provider', type: 'address' }],
+    outputs: [{ type: 'uint256' }] },
+] as const
 
-function MachineRow({ machineId }: { machineId: bigint }) {
-  const { data: m } = useReadContract({
-    address: REGISTRY, abi: REGISTRY_ABI, functionName: 'getMachine', args: [machineId],
+const ESCROW_ABI = [
+  { name: 'leaseCount', type: 'function', stateMutability: 'view',
+    inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'getLease', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'leaseId', type: 'uint256' }],
+    outputs: [{ type: 'tuple', components: [
+      { name: 'machineId',     type: 'uint256' },
+      { name: 'provider',      type: 'address' },
+      { name: 'buyer',         type: 'address' },
+      { name: 'pricePerEpoch', type: 'uint256' },
+      { name: 'epochDuration', type: 'uint256' },
+      { name: 'totalEpochs',   type: 'uint256' },
+      { name: 'epochsSettled', type: 'uint256' },
+      { name: 'escrowBalance', type: 'uint256' },
+      { name: 'startTime',     type: 'uint256' },
+      { name: 'status',        type: 'uint8'   },
+      { name: 'aiQuoteHash',   type: 'bytes32' },
+    ]}] },
+  { name: 'createLease', type: 'function', stateMutability: 'payable',
+    inputs: [
+      { name: 'machineId',     type: 'uint256' },
+      { name: 'epochDuration', type: 'uint256' },
+      { name: 'totalEpochs',   type: 'uint256' },
+      { name: 'aiQuoteHash',   type: 'bytes32' },
+    ],
+    outputs: [{ type: 'uint256' }] },
+  { name: 'raiseDispute', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'leaseId', type: 'uint256' }], outputs: [] },
+] as const
+
+type Machine = {
+  provider: `0x${string}`; hardwareHash: `0x${string}`
+  region: string; hardwareClass: string; attestationURI: string
+  registeredAt: bigint; lastHeartbeat: bigint; status: number
+}
+
+// ─── Risk + Pricing ───────────────────────────────────────────────────────────
+const MARKET_RATES: Record<string, number> = {
+  'GPU-H100': 2.5, 'GPU-A100': 1.8, 'GPU-RTX4090': 0.8, 'GPU-RTX3090': 0.45, 'CPU-64': 0.3,
+}
+
+function computeRisk(machine: Machine, reputationScore: number) {
+  let score = 50
+  const reasons: string[] = []
+  const now = Math.floor(Date.now() / 1000)
+  const staleMins = Math.max(0, Math.floor((now - Number(machine.lastHeartbeat)) / 60))
+  const ageHours  = Math.max(0, Math.floor((now - Number(machine.registeredAt))  / 3600))
+
+  if (staleMins > 30) { score -= 20; reasons.push('Heartbeat older than 30 min') }
+  else                { reasons.push('Heartbeat is fresh') }
+  if (!machine.attestationURI) { score -= 15; reasons.push('No attestation URI') }
+  else                         { score +=  5 }
+  if (ageHours < 24)       { score -= 10; reasons.push('Registered < 24 h ago') }
+  else if (ageHours > 168) { score += 10; reasons.push('> 7 days on platform') }
+  if (reputationScore < 400)      { score -= 25; reasons.push('Reputation below 400') }
+  else if (reputationScore > 700) { score += 15; reasons.push('Reputation above 700') }
+
+  score = Math.max(0, Math.min(100, score))
+  const tier = score >= 80 ? 'LOW' : score >= 50 ? 'MEDIUM' : 'HIGH'
+  const marketRate = MARKET_RATES[machine.hardwareClass] ?? 0.3
+  const hoursPerEpoch = 60 / 3600
+  const basePerEpoch  = (marketRate * hoursPerEpoch) / 0.1
+  const multiplier    = score >= 80 ? 0.85 : score >= 50 ? 0.75 : 0.65
+  const pricePerEpoch = parseFloat((basePerEpoch * multiplier).toFixed(6))
+  const discount      = Math.round((1 - multiplier) * 100)
+
+  return { score, tier, reasons: reasons.slice(0, 3), eligible: score >= 20, pricePerEpoch, discount, staleMins }
+}
+
+const TIER_STYLE = {
+  LOW:    'bg-green-900/50 text-green-300 border border-green-800',
+  MEDIUM: 'bg-yellow-900/50 text-yellow-300 border border-yellow-800',
+  HIGH:   'bg-red-900/50 text-red-300 border border-red-800',
+}
+
+const LEASE_STATUS = ['Active', 'Completed', 'Disputed', 'Refunded']
+
+// ─── My Active Lease Card ─────────────────────────────────────────────────────
+function ActiveLeaseCard({ leaseId }: { leaseId: bigint }) {
+  const [copied, setCopied] = useState(false)
+  const [disputing, setDisputing] = useState(false)
+
+  const { data: lease } = useReadContract({
+    address: ESCROW, abi: ESCROW_ABI, functionName: 'getLease', args: [leaseId],
   })
-  if (!m) return <div className="py-3 border-b border-gray-800 animate-pulse"><div className="h-3 bg-gray-800 rounded w-1/2"/></div>
+  const { data: machine } = useReadContract({
+    address: REGISTRY, abi: REGISTRY_ABI, functionName: 'getMachine',
+    args: lease ? [lease.machineId] : undefined,
+    query: { enabled: !!lease },
+  })
 
-  const stale = Math.round((Math.floor(Date.now() / 1000) - Number(m.lastHeartbeat)) / 60)
+  const { writeContract, data: hash, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  if (!lease || !machine) return (
+    <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 animate-pulse h-40"/>
+  )
+
+  // Only show active leases
+  if (lease.status !== 0) return null
+
+  const now = Math.floor(Date.now() / 1000)
+  const epochsRemaining = Number(lease.totalEpochs) - Number(lease.epochsSettled)
+  const nextEpochAt = Number(lease.startTime) + (Number(lease.epochsSettled) + 1) * Number(lease.epochDuration)
+  const secsToNext  = Math.max(0, nextEpochAt - now)
+  const minsToNext  = Math.floor(secsToNext / 60)
+
+  const copyAddr = () => {
+    navigator.clipboard.writeText(lease.provider)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const handleDispute = () => {
+    setDisputing(true)
+    writeContract({ address: ESCROW, abi: ESCROW_ABI, functionName: 'raiseDispute', args: [leaseId] })
+  }
 
   return (
-    <div className="flex flex-wrap items-center justify-between py-3 border-b border-gray-800 last:border-0 gap-3">
-      <div className="flex items-center gap-3">
-        <div className="bg-gray-800 rounded-lg p-2"><Server size={15} className="text-blue-400"/></div>
+    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
         <div>
-          <div className="text-sm font-medium">{m.hardwareClass} <span className="text-gray-500 font-normal">· {m.region}</span></div>
-          <div className="text-xs text-gray-600 font-mono">Machine #{machineId.toString()}</div>
+          <div className="flex items-center gap-2 font-semibold">
+            <Cpu size={15} className="text-blue-400"/>
+            {machine.hardwareClass}
+            <span className="text-gray-500 font-normal">· {machine.region}</span>
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5">Lease #{leaseId.toString()}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2 py-1 bg-blue-900/40 text-blue-300 border border-blue-800 rounded-full font-mono">
+            {LEASE_STATUS[lease.status] ?? 'Active'}
+          </span>
+          <Link href="/activity"
+            className="text-xs flex items-center gap-1 text-gray-400 hover:text-white transition">
+            <Activity size={12}/>Activity
+          </Link>
         </div>
       </div>
-      <div className="flex items-center gap-4 text-xs">
-        <span className={STATUS_COLOR[m.status] ?? 'text-gray-400'}>{STATUS_LABEL[m.status] ?? 'Unknown'}</span>
-        <span className={stale > 30 ? 'text-red-400' : 'text-green-400'}>
-          <Clock size={11} className="inline mr-1"/>Heartbeat: {stale}m ago
-        </span>
-        <a href={`${EXPLORER}/address/${REGISTRY}`} target="_blank" rel="noopener noreferrer"
-          className="text-gray-600 hover:text-gray-300"><ExternalLink size={13}/></a>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-800">
+        {[
+          { label: 'Epochs Done',     value: `${lease.epochsSettled}/${lease.totalEpochs}` },
+          { label: 'Remaining',       value: `${epochsRemaining} epochs` },
+          { label: 'Escrow Balance',  value: `${parseFloat(formatEther(lease.escrowBalance)).toFixed(4)} BOT` },
+          { label: 'Next Settlement', value: epochsRemaining > 0 ? (minsToNext > 0 ? `~${minsToNext}m` : 'Soon') : 'Done' },
+        ].map(({ label, value }) => (
+          <div key={label} className="bg-gray-900 px-4 py-3">
+            <div className="text-xs text-gray-500 mb-1">{label}</div>
+            <div className="font-bold text-sm">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress bar */}
+      <div className="px-5 py-3 bg-gray-900/50 border-b border-gray-800">
+        <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+          <span>Epoch progress</span>
+          <span>{Number(lease.epochsSettled)}/{Number(lease.totalEpochs)}</span>
+        </div>
+        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-blue-500 rounded-full transition-all"
+            style={{ width: `${(Number(lease.epochsSettled) / Number(lease.totalEpochs)) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* How to use your machine */}
+      <div className="px-5 py-4 border-b border-gray-800">
+        <div className="flex items-center gap-2 text-sm font-medium mb-3">
+          <Shield size={14} className="text-green-400"/>
+          How to use your leased machine
+        </div>
+        <div className="space-y-3 text-sm">
+          <div className="bg-gray-950 rounded-lg p-3 text-xs">
+            <div className="text-gray-500 mb-1">Step 1 — Contact the provider</div>
+            <p className="text-gray-300 mb-2">
+              Message the provider wallet address below. Include your Lease ID <span className="font-mono text-blue-300">#{leaseId.toString()}</span> and your public SSH key or preferred access method.
+            </p>
+            <div className="flex items-center gap-2 bg-gray-900 rounded px-3 py-2 mt-2">
+              <span className="font-mono text-gray-300 text-xs flex-1 truncate">{lease.provider}</span>
+              <button onClick={copyAddr}
+                className="text-gray-400 hover:text-white shrink-0 transition">
+                <Copy size={12}/>
+              </button>
+              {copied && <span className="text-green-400 text-xs">Copied!</span>}
+            </div>
+            <a href={`${EXPLORER}/address/${lease.provider}`} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-1.5">
+              <ExternalLink size={10}/>View provider on explorer
+            </a>
+          </div>
+
+          {machine.attestationURI ? (
+            <div className="bg-gray-950 rounded-lg p-3 text-xs">
+              <div className="text-gray-500 mb-1">Step 2 — Check attestation document</div>
+              <p className="text-gray-300 mb-2">
+                The provider published a hardware attestation that may include connection instructions.
+              </p>
+              <a href={machine.attestationURI} target="_blank" rel="noopener noreferrer"
+                className="text-blue-400 hover:underline flex items-center gap-1">
+                <ExternalLink size={11}/>Open attestation document ↗
+              </a>
+            </div>
+          ) : (
+            <div className="bg-gray-950 rounded-lg p-3 text-xs text-gray-500">
+              <div className="mb-1">Step 2 — Attestation document</div>
+              <p>This provider hasn't published an attestation document. Ask them for connection details directly.</p>
+            </div>
+          )}
+
+          <div className="bg-gray-950 rounded-lg p-3 text-xs">
+            <div className="text-gray-500 mb-1">Step 3 — Verify you're getting what you paid for</div>
+            <p className="text-gray-300">
+              The AI agent settles each epoch automatically. Check{' '}
+              <Link href="/activity" className="text-blue-400 hover:underline">Activity</Link>{' '}
+              to see heartbeat status and compliance. Compliant epochs release payment to the provider;
+              missed heartbeats refund you automatically.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Dispute / actions */}
+      <div className="px-5 py-4 flex items-center justify-between">
+        <div className="text-xs text-gray-500 flex items-center gap-1">
+          <Clock size={11}/>
+          {epochsRemaining} epoch{epochsRemaining !== 1 ? 's' : ''} remaining ·{' '}
+          {parseFloat(formatEther(lease.pricePerEpoch)).toFixed(4)} BOT/epoch
+        </div>
+        {epochsRemaining > 0 && lease.status === 0 && (
+          isSuccess ? (
+            <span className="text-xs text-yellow-400 flex items-center gap-1">
+              <AlertTriangle size={12}/>Dispute raised
+            </span>
+          ) : (
+            <button
+              onClick={handleDispute}
+              disabled={isPending || isConfirming || disputing}
+              className="flex items-center gap-2 text-xs border border-red-800 text-red-400 hover:bg-red-950/40 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+            >
+              {(isPending || isConfirming) && <Loader2 size={11} className="animate-spin"/>}
+              <AlertTriangle size={11}/>
+              Raise Dispute
+            </button>
+          )
+        )}
       </div>
     </div>
   )
 }
 
-export default function ProviderPage() {
-  const { address, isConnected } = useAccount()
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({
-    hardwareClass: 'GPU-RTX4090', region: 'asia-pacific', attestationURI: '', deviceId: '',
+// ─── My Active Leases wrapper ─────────────────────────────────────────────────
+function MyLeases({ address }: { address: `0x${string}` }) {
+  const { data: leaseCount } = useReadContract({
+    address: ESCROW, abi: ESCROW_ABI, functionName: 'leaseCount',
+  })
+  const count = Number(leaseCount ?? 0)
+  const leaseIds = useMemo(() => Array.from({ length: count }, (_, i) => BigInt(i + 1)), [count])
+
+  if (count === 0) return null
+
+  return (
+    <div className="mb-10">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        <Activity size={18} className="text-blue-400"/>
+        My Active Leases
+      </h2>
+      <BuyerLeaseList leaseIds={leaseIds} address={address}/>
+    </div>
+  )
+}
+
+function BuyerLeaseList({ leaseIds, address }: { leaseIds: bigint[], address: `0x${string}` }) {
+  return (
+    <div className="space-y-4">
+      {leaseIds.map(id => (
+        <BuyerLeaseCheck key={id.toString()} leaseId={id} address={address}/>
+      ))}
+    </div>
+  )
+}
+
+function BuyerLeaseCheck({ leaseId, address }: { leaseId: bigint, address: `0x${string}` }) {
+  const { data: lease } = useReadContract({
+    address: ESCROW, abi: ESCROW_ABI, functionName: 'getLease', args: [leaseId],
+  })
+  if (!lease || lease.buyer.toLowerCase() !== address.toLowerCase() || lease.status !== 0) return null
+  return <ActiveLeaseCard leaseId={leaseId}/>
+}
+
+// ─── Machine Card ─────────────────────────────────────────────────────────────
+function MachineCard({ machineId, onLease }: {
+  machineId: bigint
+  onLease: (id: bigint, m: Machine, price: number) => void
+}) {
+  const { data: machine } = useReadContract({
+    address: REGISTRY, abi: REGISTRY_ABI, functionName: 'getMachine', args: [machineId],
+  })
+  const { data: repScore } = useReadContract({
+    address: REPUTATION, abi: REPUTATION_ABI, functionName: 'getScore',
+    args: machine ? [machine.provider] : undefined,
+    query: { enabled: !!machine },
   })
 
-  const { data: myMachineIds } = useReadContract({
-    address: REGISTRY, abi: REGISTRY_ABI, functionName: 'getProviderMachines',
-    args: address ? [address] : undefined, query: { enabled: !!address },
-  })
+  if (!machine) return (
+    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 animate-pulse space-y-3">
+      <div className="h-4 bg-gray-800 rounded w-3/4"/><div className="h-3 bg-gray-800 rounded w-1/2"/>
+    </div>
+  )
+  if (machine.status !== 1) return null
 
-  const { writeContract, data: hash, isPending, error, reset } = useWriteContract()
+  const rep  = Number(repScore ?? 500)
+  const risk = computeRisk(machine as Machine, rep)
+
+  return (
+    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 flex flex-col gap-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Cpu size={15} className="text-blue-400"/>
+            <span className="font-semibold">{machine.hardwareClass}</span>
+          </div>
+          <div className="flex items-center gap-1 text-sm text-gray-400">
+            <MapPin size={12}/>{machine.region}
+          </div>
+        </div>
+        <span className={`text-xs px-2 py-1 rounded-full font-mono font-bold ${TIER_STYLE[risk.tier as keyof typeof TIER_STYLE]}`}>
+          {risk.tier} RISK
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        {[
+          { label: 'AI Risk Score', value: `${risk.score}/100` },
+          { label: 'Price/Epoch',   value: `${risk.pricePerEpoch} BOT`, hi: true },
+          { label: 'Heartbeat',     value: `${risk.staleMins}m ago`,
+            color: risk.staleMins > 30 ? 'text-red-400' : 'text-green-400' },
+          { label: 'Discount',      value: `${risk.discount}% off market` },
+        ].map(({ label, value, hi, color }) => (
+          <div key={label} className="bg-gray-950 rounded-lg p-3">
+            <div className="text-gray-500 text-xs mb-1">{label}</div>
+            <div className={`font-bold text-sm ${color ?? (hi ? 'text-blue-400' : '')}`}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <ul className="text-xs text-gray-500 space-y-0.5">
+        {risk.reasons.map(r => <li key={r}>· {r}</li>)}
+      </ul>
+
+      {machine.attestationURI && (
+        <a href={machine.attestationURI} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-1 text-xs text-blue-400 hover:underline">
+          <ExternalLink size={11}/>View Attestation
+        </a>
+      )}
+
+      <div className="flex gap-2 mt-auto">
+        {risk.eligible ? (
+          <button
+            onClick={() => onLease(machineId, machine as Machine, risk.pricePerEpoch)}
+            className="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded-lg text-sm font-medium transition">
+            Lease This Machine
+          </button>
+        ) : (
+          <div className="flex-1 bg-gray-800 py-2 rounded-lg text-sm text-center text-gray-500 cursor-not-allowed">
+            High Risk — Ineligible
+          </div>
+        )}
+        <a href={`${EXPLORER}/address/${machine.provider}`} target="_blank" rel="noopener noreferrer"
+          className="px-3 py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white transition">
+          <ExternalLink size={14}/>
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// ─── Lease Modal ──────────────────────────────────────────────────────────────
+function LeaseModal({ machineId, machine, pricePerEpoch, onClose }: {
+  machineId: bigint; machine: Machine; pricePerEpoch: number; onClose: () => void
+}) {
+  const [epochDuration, setEpochDuration] = useState('60')
+  const [totalEpochs,   setTotalEpochs]   = useState('5')
+
+  const epochs     = Math.max(1, parseInt(totalEpochs   || '1'))
+  const duration   = Math.max(60, parseInt(epochDuration || '60'))
+  const totalPrice = pricePerEpoch * epochs
+
+  const { writeContract, data: hash, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const handleRegister = () => {
-    if (!form.deviceId.trim()) { alert('Enter a Device ID to generate the hardware hash.'); return }
-    const hardwareHash = keccak256(toBytes(form.deviceId.trim() + form.hardwareClass))
+  const handleLease = () => {
+    const aiQuoteHash = keccak256(toBytes(`quote-machine-${machineId}-ts-${Date.now()}`))
     writeContract({
-      address: REGISTRY, abi: REGISTRY_ABI, functionName: 'registerMachine',
-      args: [form.hardwareClass, form.region, form.attestationURI, hardwareHash],
-      value: parseEther('0.001'),
+      address: ESCROW, abi: ESCROW_ABI, functionName: 'createLease',
+      args: [machineId, BigInt(duration), BigInt(epochs), aiQuoteHash],
+      value: parseEther(totalPrice.toFixed(8)),
     })
   }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-gray-700 shadow-2xl">
+        <h2 className="text-xl font-bold mb-1">Lease {machine.hardwareClass}</h2>
+        <p className="text-gray-400 text-sm mb-6">{machine.region} · #{machineId.toString()}</p>
+
+        {isSuccess ? (
+          <div className="text-center py-8">
+            <CheckCircle size={48} className="text-green-400 mx-auto mb-4"/>
+            <p className="text-green-400 font-semibold mb-2">Lease Created!</p>
+            <p className="text-gray-400 text-sm mb-2">
+              BOT is locked in escrow. The AI agent monitors heartbeats and settles automatically.
+            </p>
+            <p className="text-gray-500 text-xs mb-5">
+              Scroll up on the marketplace to see your active lease and connection instructions.
+            </p>
+            <div className="flex gap-3 justify-center">
+              {hash && (
+                <a href={`${EXPLORER}/tx/${hash}`} target="_blank" rel="noopener noreferrer"
+                  className="text-blue-400 hover:underline text-sm">View TX ↗</a>
+              )}
+              <button onClick={onClose} className="text-sm text-gray-400 hover:text-white">
+                Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Epoch Duration (seconds, min 60)</label>
+                <input type="number" value={epochDuration} min="60"
+                  onChange={e => setEpochDuration(e.target.value)}
+                  className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm"/>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Total Epochs (max 50)</label>
+                <input type="number" value={totalEpochs} min="1" max="50"
+                  onChange={e => setTotalEpochs(e.target.value)}
+                  className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm"/>
+              </div>
+              <div className="bg-gray-950 rounded-lg p-4 text-sm space-y-2">
+                <div className="flex justify-between text-gray-400">
+                  <span>Price per epoch</span><span>{pricePerEpoch} BOT</span>
+                </div>
+                <div className="flex justify-between text-gray-400">
+                  <span>Epochs</span><span>× {epochs}</span>
+                </div>
+                <div className="flex justify-between font-bold border-t border-gray-800 pt-2">
+                  <span>Total escrow</span>
+                  <span className="text-blue-400">{totalPrice.toFixed(6)} BOT</span>
+                </div>
+              </div>
+              <div className="bg-blue-950/30 border border-blue-900/40 rounded-lg p-3 text-xs text-blue-300">
+                After leasing, contact the provider with your Lease ID to get SSH / API credentials.
+                The AI agent automatically refunds you for any missed heartbeats.
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-950 border border-red-800 rounded-lg p-3 text-red-300 text-xs mb-4">
+                {error.message.split('\n')[0]}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={onClose}
+                className="flex-1 border border-gray-600 py-3 rounded-lg hover:border-gray-400 transition text-sm">
+                Cancel
+              </button>
+              <button onClick={handleLease} disabled={isPending || isConfirming}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 py-3 rounded-lg font-medium transition flex items-center justify-center gap-2 text-sm">
+                {(isPending || isConfirming) && <Loader2 size={15} className="animate-spin"/>}
+                {isPending ? 'Confirm in wallet…' : isConfirming ? 'Confirming…' : 'Create Lease'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default function MarketplacePage() {
+  const { address, isConnected } = useAccount()
+  const [leaseTarget, setLeaseTarget] = useState<{
+    id: bigint; machine: Machine; pricePerEpoch: number
+  } | null>(null)
+
+  const { data: machineCount } = useReadContract({
+    address: REGISTRY, abi: REGISTRY_ABI, functionName: 'machineCount',
+  })
+
+  const count = Number(machineCount ?? 0)
+  const machineIds = useMemo(
+    () => Array.from({ length: count }, (_, i) => BigInt(i + 1)),
+    [count]
+  )
 
   return (
     <div className="min-h-screen">
       <nav className="border-b border-gray-800 px-6 py-4 flex justify-between items-center sticky top-0 bg-gray-950/90 backdrop-blur z-40">
         <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white transition">
-          <ArrowLeft size={16}/><span className="text-blue-400 font-bold">ProofLease</span>
+          <ArrowLeft size={16}/>
+          <span className="text-blue-400 font-bold">ProofLease</span>
         </Link>
         <div className="flex items-center gap-4">
-          <Link href="/marketplace" className="text-sm text-gray-400 hover:text-white transition">Marketplace</Link>
+          <Link href="/provider"  className="text-sm text-gray-400 hover:text-white transition">Provider</Link>
+          <Link href="/activity"  className="text-sm text-gray-400 hover:text-white transition">Activity</Link>
+          <Link href="/verify"    className="text-sm text-gray-400 hover:text-white transition">Verify</Link>
           <ConnectButton/>
         </div>
       </nav>
 
-      <div className="max-w-3xl mx-auto px-6 py-12">
-        <h1 className="text-3xl font-bold mb-2">Provider Dashboard</h1>
-        <p className="text-gray-400 mb-8 text-sm leading-relaxed">
-          Register compute machines as RWA assets on BOT Chain. Earn BOT for every epoch the AI agent marks compliant.
-        </p>
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        {/* My active leases — only when connected */}
+        {isConnected && address && <MyLeases address={address}/>}
 
-        {!isConnected ? (
-          <div className="bg-gray-900 rounded-xl p-12 text-center border border-gray-800">
-            <Server size={44} className="mx-auto mb-4 text-gray-700"/>
-            <p className="text-gray-400 mb-6 text-sm">Connect your wallet to manage your machines</p>
+        <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
+          <div>
+            <h1 className="text-3xl font-bold mb-1">Compute Marketplace</h1>
+            <p className="text-gray-400 text-sm">
+              {count} machine{count !== 1 ? 's' : ''} registered ·{' '}
+              <a href={`${EXPLORER}/address/${REGISTRY}`} target="_blank" rel="noopener noreferrer"
+                className="text-blue-400 hover:underline">AssetRegistry ↗</a>
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2">
+            <Shield size={13} className="text-blue-400"/>
+            Risk + pricing mirrors the on-chain AI agent
+          </div>
+        </div>
+
+        {!isConnected && (
+          <div className="bg-blue-950/40 border border-blue-900 rounded-xl p-4 mb-8 flex items-center justify-between gap-4">
+            <p className="text-blue-300 text-sm">Connect wallet to create leases and see your active machines</p>
             <ConnectButton/>
           </div>
-        ) : (
-          <>
-            {/* My machines */}
-            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">My Machines</h2>
-                <button onClick={() => setShowForm(!showForm)}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition">
-                  <Plus size={14}/>Register Machine
-                </button>
-              </div>
-              {!myMachineIds || myMachineIds.length === 0
-                ? <p className="text-gray-500 text-sm py-4">No machines registered yet.</p>
-                : myMachineIds.map(id => <MachineRow key={id.toString()} machineId={id}/>)
-              }
-            </div>
-
-            {/* Registration form */}
-            {showForm && (
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <h2 className="text-lg font-semibold mb-4">Register New Machine</h2>
-                {isSuccess ? (
-                  <div className="text-center py-8">
-                    <CheckCircle size={44} className="text-green-400 mx-auto mb-4"/>
-                    <p className="text-green-400 font-semibold mb-2">Machine Registered!</p>
-                    <p className="text-gray-500 text-sm mb-4">
-                      Now live on BOT Chain. The AI agent will monitor heartbeats once a lease is active.
-                    </p>
-                    {hash && (
-                      <a href={`${EXPLORER}/tx/${hash}`} target="_blank" rel="noopener noreferrer"
-                        className="text-blue-400 hover:underline text-sm">View TX ↗</a>
-                    )}
-                    <div className="mt-4 flex gap-3 justify-center">
-                      <button onClick={() => { reset(); setForm({ hardwareClass:'GPU-RTX4090', region:'asia-pacific', attestationURI:'', deviceId:'' }) }}
-                        className="text-sm border border-gray-600 hover:border-gray-400 px-4 py-2 rounded-lg transition">
-                        Register Another
-                      </button>
-                      <button onClick={() => setShowForm(false)} className="text-sm text-gray-500 hover:text-white">Close</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">Hardware Class</label>
-                        <select value={form.hardwareClass}
-                          onChange={e => setForm(s => ({ ...s, hardwareClass: e.target.value }))}
-                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm">
-                          {HARDWARE_CLASSES.map(c => <option key={c}>{c}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">Region</label>
-                        <select value={form.region}
-                          onChange={e => setForm(s => ({ ...s, region: e.target.value }))}
-                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm">
-                          {REGIONS.map(r => <option key={r}>{r}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">
-                        Device ID <span className="text-gray-600 text-xs">(used to generate hardware hash — keep private)</span>
-                      </label>
-                      <input value={form.deviceId} placeholder="e.g. server-001-rtx4090"
-                        onChange={e => setForm(s => ({ ...s, deviceId: e.target.value }))}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm"/>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-400 mb-1">Attestation URI</label>
-                      <input value={form.attestationURI} placeholder="https://github.com/you/repo/blob/main/attestation.md"
-                        onChange={e => setForm(s => ({ ...s, attestationURI: e.target.value }))}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm"/>
-                      <p className="text-xs text-gray-600 mt-1">Leaving this blank deducts 15 points from your AI risk score.</p>
-                    </div>
-                    <div className="bg-gray-950 rounded-lg p-4 text-sm flex justify-between">
-                      <span className="text-gray-400">Registration bond</span>
-                      <span className="font-mono">0.001 BOT</span>
-                    </div>
-                    {error && (
-                      <div className="bg-red-950 border border-red-800 rounded-lg p-3 text-red-300 text-xs flex gap-2">
-                        <AlertCircle size={14} className="shrink-0 mt-0.5"/>{error.message.split('\n')[0]}
-                      </div>
-                    )}
-                    <button onClick={handleRegister} disabled={isPending || isConfirming}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 py-3 rounded-lg font-medium transition flex items-center justify-center gap-2 text-sm">
-                      {(isPending || isConfirming) && <Loader2 size={15} className="animate-spin"/>}
-                      {isPending ? 'Confirm in wallet…' : isConfirming ? 'Registering…' : 'Register Machine (0.001 BOT bond)'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </>
         )}
 
-        <div className="mt-6 bg-gray-900 rounded-xl p-4 border border-gray-800 text-xs text-gray-500 leading-relaxed">
-          <strong className="text-gray-400">How earnings work: </strong>
-          The AI agent monitors heartbeats each epoch. Compliant → 98% of epoch price released to your
-          withdrawal balance. Missed heartbeat → buyer refunded for that epoch.
-          Withdraw via <code className="text-blue-300">LeaseEscrow.withdraw()</code> anytime.
-        </div>
+        {count === 0 ? (
+          <div className="text-center py-24 text-gray-500">
+            <Cpu size={48} className="mx-auto mb-4 opacity-30"/>
+            <p className="text-lg mb-2">No machines registered yet</p>
+            <Link href="/provider" className="text-blue-400 hover:underline text-sm">Register your machine →</Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {machineIds.map(id => (
+              <MachineCard key={id.toString()} machineId={id}
+                onLease={(id, m, p) => setLeaseTarget({ id, machine: m, pricePerEpoch: p })}/>
+            ))}
+          </div>
+        )}
       </div>
+
+      {leaseTarget && (
+        <LeaseModal
+          machineId={leaseTarget.id}
+          machine={leaseTarget.machine}
+          pricePerEpoch={leaseTarget.pricePerEpoch}
+          onClose={() => setLeaseTarget(null)}
+        />
+      )}
     </div>
   )
 }
