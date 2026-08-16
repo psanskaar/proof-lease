@@ -1,22 +1,24 @@
 # ProofLease - Verifiable Compute Leases on BOT Chain
-
-> AI-verified SLA settlement for GPU and CPU compute leases. Providers register machines as RWA assets. Buyers escrow BOT. An AI agent monitors heartbeat proofs and settles each epoch automatically - compliant epochs release payment, breaches refund the buyer. Every decision is anchored to a verifiable on-chain proof hash.
-
+ 
+> AI-verified SLA settlement for GPU and CPU compute leases. Providers register machines as RWA assets. Buyers escrow BOT. An AI agent monitors heartbeat proofs each epoch and settles automatically - compliant epochs release payment, breaches refund the buyer. Every decision is anchored to a verifiable on-chain proof hash.
+ 
 Built for **BOT Chain Builder Challenge #2** - AI x RWA track.
-
+ 
 ---
-
+ 
 ## Judge Path
-
+ 
 | | Testnet (Bohr) | Mainnet |
 |---|---|---|
-| **AssetRegistry** | [0xE147...Ce6f](https://scan.bohr.life/address/0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f) | coming after gas support |
-| **LeaseEscrow** | [0x8f4a...DC4](https://scan.bohr.life/address/0x8f4a193B4DeAaF619d46b2f4934a9557169AFdC4) | coming after gas support |
-| **ProofRouter** | [0xe3A6...364](https://scan.bohr.life/address/0xe3A60feE5562108cAFd72e4e0f4271a5757c4364) | coming after gas support |
-| **Reputation** | [0x3872...BAa](https://scan.bohr.life/address/0x3872A0D2EFEe103396eB8CE5c35f09FeE1fAFBAa) | coming after gas support |
-
+| **AssetRegistry** | [0xE147...Ce6f](https://scan.bohr.life/address/0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f) | [0xE147...Ce6f](https://scan.botchain.ai/address/0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f) |
+| **LeaseEscrow** | [0x8f4a...DC4](https://scan.bohr.life/address/0x8f4a193B4DeAaF619d46b2f4934a9557169AFdC4) | [0x8f4a...DC4](https://scan.botchain.ai/address/0x8f4a193B4DeAaF619d46b2f4934a9557169AFdC4) |
+| **ProofRouter** | [0xe3A6...364](https://scan.bohr.life/address/0xe3A60feE5562108cAFd72e4e0f4271a5757c4364) | [0xe3A6...364](https://scan.botchain.ai/address/0xe3A60feE5562108cAFd72e4e0f4271a5757c4364) |
+| **Reputation** | [0x3872...BAa](https://scan.bohr.life/address/0x3872A0D2EFEe103396eB8CE5c35f09FeE1fAFBAa) | [0x3872...BAa](https://scan.botchain.ai/address/0x3872A0D2EFEe103396eB8CE5c35f09FeE1fAFBAa) |
+ 
+Note: addresses are identical on both networks - same deployer wallet and nonce sequence produces deterministic EVM contract addresses.
+ 
 ### Live Testnet Transactions
-
+ 
 | Action | TX |
 |---|---|
 | Machine registered | [0xf89c...fcd](https://scan.bohr.life/tx/0xf89c9c8598f5bed215ff2d766ef3a588cd53219b79766e66cdd6b9441ba25fcd) |
@@ -25,23 +27,23 @@ Built for **BOT Chain Builder Challenge #2** - AI x RWA track.
 | Epoch 0 settled - compliant | [0x5f92...12](https://scan.bohr.life/tx/0x5f923d0d5db6341c4d7310b5458969b073c0543b7a83ce86aedc827a89788f12) |
 | Epoch 1 settled - breach | [0x8b7d...72](https://scan.bohr.life/tx/0x8b7deb06f5ded89fb27afcfa577cb3e3e56d57f33fcc3c4bc7f9e1d2e57ef272) |
 | Provider withdrawal | [0xc9e7...a6](https://scan.bohr.life/tx/0xc9e7242cabd84c70804dd26cb6fa911ff285ab65033da8aebbcb4d7e761979a6) |
-
+ 
 ---
-
+ 
 ## How It Works
-
+ 
 The AI agent handles three jobs:
-- **Risk scoring** - evaluates provider history, heartbeat freshness, and attestation URI
-- **Quote generation** - prices capacity against market rates with a rationale, using Groq (llama-3.3-70b) with a deterministic local fallback
-- **Epoch settlement** - submits proofs to ProofRouter then calls `settleEpoch()` based on compliance; breach epochs refund the buyer in full
-
-The agent is policy-bounded. It can only call `settleEpoch()`. It cannot move funds, modify contracts, or override dispute resolution. All fund movements go through the pull-payment withdrawal pattern.
-
+- **Risk scoring** - evaluates provider history, heartbeat freshness, and attestation URI using Groq (llama-3.3-70b) with a local deterministic fallback
+- **Quote generation** - prices capacity against centralised market rates with a rationale
+- **Epoch settlement** - submits proofs to ProofRouter then calls settleEpoch() based on heartbeat compliance; breach epochs refund the buyer in full
+ 
+The agent is policy-bounded. It can only call settleEpoch(). It cannot move funds, modify contracts, or override dispute resolution. All fund movements go through the pull-payment withdrawal pattern.
+ 
 ---
-
+ 
 ## Contracts
-
-```
+ 
+````
 contracts/
   src/
     interfaces/IProofLease.sol   - shared structs and events
@@ -55,58 +57,91 @@ contracts/
     Deploy.s.sol                 - single-command deployment
 deployments/
   bohr-testnet.json              - testnet contract addresses
-```
-
+  bot-mainnet.json               - mainnet contract addresses
+````
+ 
 ---
-
+ 
 ## Agent
-
-```
+ 
+````
 agent/
-  index.js          - demo runner, wires all three stages together
+  server.js         - HTTP server (tick loop + /health + /proofs API)
+  index.js          - standalone demo runner
   riskScorer.js     - Groq + local fallback risk scoring
   quoteEngine.js    - Groq + local fallback quote generation
-  settlementBot.js  - proof submission and epoch settlement
+  settlementBot.js  - ProofRouter submission and epoch settlement
   proofStore.js     - file-locked proof persistence with keccak verification
-  data/proofs.json  - proof records from live testnet runs
+  data/proofs.json  - proof records from live runs
   test/test.js      - 9 Node.js tests covering all modules
+  render.yaml       - Render.com deployment config
   .env.example      - environment variable reference
-```
-
-The agent runs in two modes controlled by `SETTLEMENT_MODE`:
-
-- **`simulated`** (default) - full proof pipeline with no chain writes; safe for testing
-- **`live`** - submits to ProofRouter and calls `settleEpoch()` on-chain
-
+````
+ 
+The agent server runs a tick loop every 30 seconds:
+1. Finds the next active lease with unsettled epochs
+2. Reads the provider's last heartbeat timestamp from AssetRegistry on-chain
+3. Scores risk via Groq AI (fallback to local logic if unavailable)
+4. Marks the epoch compliant (heartbeat within 300s) or breach (stale)
+5. Submits proof to ProofRouter then calls settleEpoch() on LeaseEscrow
+6. Persists the full record (proof hash, tx hashes, AI reasoning) to proofs.json
+ 
+The agent exposes:
+- `GET /health` - agent status, uptime, tick count, last error
+- `GET /proofs` - all settlement records sorted newest first
+- `GET /proofs/:leaseId/:epoch` - single epoch record
+ 
+The agent runs in two modes via SETTLEMENT_MODE:
+- **simulated** (default) - full pipeline with no chain writes
+- **live** - submits to ProofRouter and calls settleEpoch() on-chain
+ 
 ---
-
+ 
+## Frontend
+ 
+````
+frontend/
+  app/
+    page.tsx              - landing page with contract table and how it works
+    marketplace/page.tsx  - machine listings, risk scores, lease creation modal, My Leases
+    provider/page.tsx     - provider dashboard, machine registration, withdraw, heartbeat guide
+    activity/page.tsx     - live agent feed merged with on-chain EpochSettled events
+    verify/page.tsx       - proof hash verifier with live ProofRouter.getProof() reads
+````
+ 
+The activity page fetches from the agent API (NEXT_PUBLIC_AGENT_URL) and independently reads EpochSettled events from LeaseEscrow directly via wagmi. Both sources are merged by lease ID and epoch so each card shows the full picture: AI reasoning, risk score, proof hash, and explorer links.
+ 
+The verify page reads ProofRouter.getProof(leaseId, epoch) live from the chain and lets anyone recompute the keccak256 hash from the raw proof string to confirm the agent's decision was based on real data.
+ 
+---
+ 
 ## Why BOT Chain
-
+ 
 BOT Chain's roadmap includes vCompute (Verifiable Computation Layer) and Compute Node Activation, which onboards physical GPU and CPU hardware as DePIN nodes. ProofLease is the user-facing marketplace for that infrastructure: hardware operators earn by contributing capacity, buyers get SLA-guaranteed compute, and BOT token is the settlement currency for the entire loop.
-
+ 
 BOT Chain's 0.75-second blocks and near-zero fees make epoch-by-epoch proof settlement economically viable. On Ethereum mainnet the gas cost per epoch would exceed the payment itself.
-
+ 
 ---
-
+ 
 ## Smart Contract Design Decisions
-
-**Pull payment pattern** - `pendingWithdrawals` mapping prevents reentrancy. Funds are queued, not pushed.
-
-**Epoch-ordered settlement** - `require(epoch == lease.epochsSettled)` enforces strict sequence. No skipping, no replaying.
-
-**Replay protection** - `EpochStatus.Pending` check fires before the epoch-order check, so a replay attempt on a settled epoch returns "Already settled" not a misleading "Wrong epoch".
-
-**Agent oracle separation** - only the `agentOracle` address can call `settleEpoch()`. The agent wallet has no other permissions. Owner retains dispute resolution via `resolveDispute()`.
-
+ 
+**Pull payment pattern** - pendingWithdrawals mapping prevents reentrancy. Funds are queued, not pushed.
+ 
+**Epoch-ordered settlement** - require(epoch == lease.epochsSettled) enforces strict sequence. No skipping, no replaying.
+ 
+**Replay protection** - EpochStatus.Pending check fires before the epoch-order check, so a replay attempt on a settled epoch returns "Already settled" not a misleading "Wrong epoch".
+ 
+**Agent oracle separation** - only the agentOracle address can call settleEpoch(). The agent wallet has no other permissions. Owner retains dispute resolution via resolveDispute().
+ 
 **2% platform fee** - deducted from provider payment on compliant epochs only. Breach epochs refund the full epoch amount to the buyer.
-
+ 
 ---
-
+ 
 ## Test Coverage
-
-```
+ 
+````
 forge test -vvv
-
+ 
 Ran 15 tests for test/ProofLease.t.sol:ProofLeaseTest
 [PASS] test_HappyPath
 [PASS] test_BreachHoldsPaymentRefundsBuyer
@@ -123,89 +158,78 @@ Ran 15 tests for test/ProofLease.t.sol:ProofLeaseTest
 [PASS] test_ResolveDispute
 [PASS] test_ProofRouterStoresHash
 [PASS] test_ReputationUpdatesAfterLease
-
+ 
 15 passed; 0 failed
-```
-
+````
+ 
 ---
-
+ 
 ## Build and Deploy
-
+ 
 ### Contracts
-
+ 
 ```bash
-# Install Foundry
 curl -L https://foundry.paradigm.xyz | bash && foundryup
-
-# Clone and install deps
+ 
 git clone https://github.com/psanskaar/proof-lease
 cd proof-lease/contracts
 forge install OpenZeppelin/openzeppelin-contracts
-
-# Run tests
+ 
 forge test -vvv
-
-# Deploy to testnet
+ 
 forge script script/Deploy.s.sol \
   --rpc-url https://rpc.bohr.life \
   --broadcast -vvvv
-
-# Deploy to mainnet
-forge script script/Deploy.s.sol \
-  --rpc-url https://rpc.botchain.ai \
-  --broadcast -vvvv
 ```
-
+ 
 ### Agent
-
+ 
 ```bash
 cd agent
 cp .env.example .env
-# Fill in GROQ_API_KEY and PRIVATE_KEY in .env
-
+# Add GROQ_API_KEY and PRIVATE_KEY
+ 
 npm install
-
-# Run in simulated mode (no chain writes)
-npm start
-
-# Run tests
-npm test
+npm start          # simulated mode
 ```
-
-The `.env` file controls the run mode via `SETTLEMENT_MODE`:
-
+ 
+To deploy the agent as a live service, connect the repo to [Render.com](https://render.com) - the `render.yaml` in the agent folder configures everything. Add GROQ_API_KEY and PRIVATE_KEY as environment secrets in the Render dashboard.
+ 
+### Frontend
+ 
 ```bash
-# Simulated - full proof pipeline, no chain writes (default)
-SETTLEMENT_MODE=simulated
-
-# Live - submits to ProofRouter and settles epochs on-chain
-# Requires PRIVATE_KEY, RPC_URL, LEASE_ESCROW, and PROOF_ROUTER to be set
-SETTLEMENT_MODE=live
+cd frontend
+cp .env.local.example .env.local
+# Set NEXT_PUBLIC_AGENT_URL to your Render agent URL
+ 
+npm install
+npm run dev
 ```
-
-The testnet contract addresses are pre-filled in `.env.example` so live mode works against Bohr testnet out of the box once you add your key.
-
+ 
+Deploy to Vercel by importing the GitHub repo and setting root directory to `frontend`.
+ 
 ---
-
+ 
 ## Network Config
-
+ 
 | | Testnet | Mainnet |
 |---|---|---|
 | Chain ID | 968 | 677 |
 | RPC | https://rpc.bohr.life | https://rpc.botchain.ai |
 | Explorer | https://scan.bohr.life | https://scan.botchain.ai |
 | Faucet | https://faucet.botchain.ai/basic | - |
-
+ 
 ---
-
+ 
 ## Stack
-
+ 
 - **Contracts** - Solidity 0.8.24, Foundry, OpenZeppelin
-- **AI Agent** - Node.js, ethers.js v6, Groq (llama-3.3-70b) with local fallback
-- **Frontend** - in development
-
+- **AI Agent** - Node.js, ethers.js v6, Groq (llama-3.3-70b) with local fallback, deployed on Render
+- **Frontend** - Next.js 14, wagmi v2, viem, RainbowKit, Tailwind CSS, deployed on Vercel
+ 
 ---
-
+ 
 ## Deployments
-
-See [deployments/bohr-testnet.json](./deployments/bohr-testnet.json) for the full testnet deployment record.
+ 
+See [deployments/bohr-testnet.json](./deployments/bohr-testnet.json) for the testnet deployment record.
+See [deployments/bot-mainnet.json](./deployments/bot-mainnet.json) for the mainnet deployment record.
