@@ -1,10 +1,11 @@
 require('dotenv').config()
-const http  = require('http')
-const fs    = require('fs')
-const path  = require('path')
+const http   = require('http')
+const fs     = require('fs')
+const path   = require('path')
 const ethers = require('ethers')
+const Groq   = require('groq-sdk')
 
-const { scoreMachineRisk }              = require('./riskScorer')
+const { scoreMachineRisk }               = require('./riskScorer')
 const { findAvailableLease, settleEpoch } = require('./settlementBot')
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -21,8 +22,8 @@ const state = {
 const PORT          = process.env.PORT          || 3000
 const POLL_MS       = Number(process.env.POLL_MS       || 30_000)
 const HEARTBEAT_MAX = Number(process.env.HEARTBEAT_MAX || 300)
-const RPC_URL       = process.env.RPC_URL       || 'https://rpc.bohr.life'
-const EXPLORER      = 'https://scan.bohr.life'
+const RPC_URL       = process.env.RPC_URL       || 'https://rpc.botchain.ai'
+const EXPLORER      = 'https://scan.botchain.ai'
 const IS_LIVE       = state.mode === 'live'
 
 // ─── Proof store ──────────────────────────────────────────────────────────────
@@ -40,15 +41,129 @@ function writeProof(leaseId, epoch, entry) {
   fs.writeFileSync(PROOFS_FILE, JSON.stringify(all, null, 2))
 }
 
-// ─── Chain read — machine heartbeat ──────────────────────────────────────────
+// ─── Chain reads ──────────────────────────────────────────────────────────────
 const REGISTRY_ABI = [
   'function getMachine(uint256 machineId) external view returns (tuple(address provider, bytes32 hardwareHash, string region, string hardwareClass, string attestationURI, uint256 registeredAt, uint256 lastHeartbeat, uint8 status))',
+]
+const REPUTATION_ABI = [
+  'function getScore(address provider) external view returns (uint256)',
+  'function getFulfillmentRate(address provider) external view returns (uint256)',
+  'function totalLeases(address provider) external view returns (uint256)',
+]
+const ESCROW_ABI = [
+  'function getLease(uint256 leaseId) external view returns (tuple(uint256 machineId, address buyer, address provider, uint256 escrowBalance, uint256 epochRate, uint256 totalEpochs, uint256 epochsSettled, uint256 startTime, uint8 status))',
 ]
 
 async function getMachine(machineId) {
   const provider = new ethers.JsonRpcProvider(RPC_URL)
   const registry = new ethers.Contract(process.env.ASSET_REGISTRY, REGISTRY_ABI, provider)
   return await registry.getMachine(machineId)
+}
+
+async function getProviderReputation(providerAddress) {
+  if (!process.env.REPUTATION_CONTRACT) return { score: 500, rate: 100, total: 0 }
+  try {
+    const provider = new ethers.JsonRpcProvider(RPC_URL)
+    const rep = new ethers.Contract(process.env.REPUTATION_CONTRACT, REPUTATION_ABI, provider)
+    const [score, rate, total] = await Promise.all([
+      rep.getScore(providerAddress),
+      rep.getFulfillmentRate(providerAddress),
+      rep.totalLeases(providerAddress),
+    ])
+    return {
+      score:   Number(score),
+      rate:    Number(rate),
+      total:   Number(total),
+    }
+  } catch (e) {
+    console.log(`  Reputation read failed: ${e.message}`)
+    return { score: 500, rate: 100, total: 0 }
+  }
+}
+
+// ─── Groq Epoch Evaluation ────────────────────────────────────────────────────
+// Groq IS the oracle — it receives all signals and returns a binding verdict.
+// Falls back to pure timestamp check only when Groq is unavailable.
+
+function localEpochEval(staleSecs) {
+  const compliant = staleSecs <= HEARTBEAT_MAX
+  return {
+    compliant,
+    reasoning: compliant
+      ? `Heartbeat is ${staleSecs}s old, within the ${HEARTBEAT_MAX}s SLA threshold. Provider met uptime obligation.`
+      : `Heartbeat is ${staleSecs}s old, exceeding the ${HEARTBEAT_MAX}s SLA threshold. Provider missed uptime obligation.`,
+    confidence: compliant ? 90 : 95, // high confidence for simple threshold breach
+    factors: compliant ? ['heartbeat_fresh', 'sla_met'] : ['heartbeat_stale', 'sla_violated'],
+    mode: 'local-fallback',
+  }
+}
+
+async function evaluateEpochWithGroq({
+  staleSecs, machine, repScore, repRate, repTotal,
+  leaseId, epoch, totalEpochs,
+}) {
+  if (!process.env.GROQ_API_KEY) return localEpochEval(staleSecs)
+
+  const ageHours  = Math.max(0, Math.floor((Date.now() / 1000 - Number(machine.registeredAt)) / 3600))
+  const hasAttest = Boolean(machine.attestationURI)
+
+  const prompt = `You are an AI oracle on BOT Chain executing a binding settlement for a decentralized compute lease.
+Your verdict triggers an irreversible blockchain transaction: COMPLIANT releases BOT to the provider, BREACH refunds the buyer.
+
+EPOCH DATA:
+- Lease #${leaseId} | Epoch ${epoch + 1} of ${totalEpochs}
+- Machine: ${machine.hardwareClass} | Region: ${machine.region}
+- Heartbeat age: ${staleSecs}s (SLA limit: ${HEARTBEAT_MAX}s)
+- Provider reputation: ${repScore}/1000 | Fulfillment rate: ${repRate}% over ${repTotal} leases
+- Machine age: ${ageHours}h registered
+- Attestation URI: ${hasAttest ? 'PROVIDED' : 'MISSING'}
+
+SETTLEMENT RULES:
+1. PRIMARY: heartbeat older than ${HEARTBEAT_MAX}s → BREACH (hard SLA violation, non-negotiable)
+2. SECONDARY: if heartbeat is fresh, consider reputation:
+   - repScore < 200 with repTotal > 3 → flag but still COMPLIANT (heartbeat proof wins)
+   - All other cases with fresh heartbeat → COMPLIANT
+3. Do NOT flip a fresh-heartbeat epoch to BREACH based on reputation alone.
+
+Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
+{"compliant": true, "reasoning": "one clear sentence explaining the verdict", "confidence": 87, "factors": ["heartbeat_fresh", "reputation_stable"]}`
+
+  try {
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    const response = await groq.chat.completions.create({
+      model:       'llama-3.3-70b-versatile',
+      messages:    [{ role: 'user', content: prompt }],
+      max_tokens:  200,
+      temperature: 0.1,
+    })
+    const text   = response.choices[0]?.message?.content?.trim() ?? ''
+    const clean  = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+    const parsed = JSON.parse(clean)
+
+    // Validate: boolean compliant, string reasoning, number confidence, string[] factors
+    if (typeof parsed.compliant !== 'boolean') throw new Error('invalid compliant field')
+
+    // Hard override: Groq cannot mark COMPLIANT if heartbeat is beyond SLA
+    const hardBreach = staleSecs > HEARTBEAT_MAX
+    const finalCompliant = hardBreach ? false : Boolean(parsed.compliant)
+
+    return {
+      compliant:  finalCompliant,
+      reasoning:  typeof parsed.reasoning === 'string'
+        ? parsed.reasoning
+        : (finalCompliant ? 'Epoch verified compliant by AI oracle.' : 'Epoch marked breach by AI oracle.'),
+      confidence: typeof parsed.confidence === 'number'
+        ? Math.max(0, Math.min(100, Math.round(parsed.confidence)))
+        : 75,
+      factors: Array.isArray(parsed.factors)
+        ? parsed.factors.filter(f => typeof f === 'string').slice(0, 5)
+        : [],
+      mode: 'groq',
+    }
+  } catch (e) {
+    console.log(`  Groq epoch eval failed (${e.message}) — using local fallback`)
+    return localEpochEval(staleSecs)
+  }
 }
 
 // ─── Tick ─────────────────────────────────────────────────────────────────────
@@ -76,18 +191,32 @@ async function tick() {
     const machineId = Number(lease.machineId)
     console.log(`  Lease #${leaseId} | Machine #${machineId} | Epoch ${epoch}/${Number(lease.totalEpochs)}`)
 
-    // 1. Read heartbeat from chain
+    // 1. Read machine heartbeat from chain
     const machine   = await getMachine(machineId)
     const staleSecs = Math.floor(Date.now() / 1000) - Number(machine.lastHeartbeat)
-    const compliant = staleSecs <= HEARTBEAT_MAX
-    console.log(`  Heartbeat: ${staleSecs}s ago → ${compliant ? 'COMPLIANT ✅' : 'BREACH ❌'}`)
+    console.log(`  Heartbeat: ${staleSecs}s old (limit: ${HEARTBEAT_MAX}s)`)
 
-    // 2. Groq AI risk scoring
-    let riskResult = {
-      score: 50, tier: 'MEDIUM',
-      reasons: ['Fallback scoring — Groq unavailable'],
-      mode: 'local',
-    }
+    // 2. Read REAL reputation from chain (was hardcoded 500 before)
+    const rep = await getProviderReputation(machine.provider)
+    console.log(`  Reputation: ${rep.score}/1000 | ${rep.rate}% fulfillment over ${rep.total} leases`)
+
+    // 3. Groq evaluates all signals and returns the binding verdict
+    console.log('  Calling Groq oracle for epoch verdict…')
+    const verdict = await evaluateEpochWithGroq({
+      staleSecs,
+      machine,
+      repScore:   rep.score,
+      repRate:    rep.rate,
+      repTotal:   rep.total,
+      leaseId,
+      epoch,
+      totalEpochs: Number(lease.totalEpochs),
+    })
+    console.log(`  Groq verdict: ${verdict.compliant ? 'COMPLIANT ✅' : 'BREACH ❌'} (${verdict.confidence}% confidence) via ${verdict.mode}`)
+    console.log(`  Reasoning: ${verdict.reasoning}`)
+
+    // 4. Groq risk score for the machine (pre-lease scoring, kept for UI display)
+    let riskResult = { score: 50, tier: 'MEDIUM', reasons: ['Fallback scoring'], mode: 'local' }
     try {
       riskResult = await scoreMachineRisk({
         hardwareClass:   machine.hardwareClass,
@@ -95,30 +224,18 @@ async function tick() {
         lastHeartbeat:   Number(machine.lastHeartbeat),
         registeredAt:    Number(machine.registeredAt),
         attestationURI:  machine.attestationURI,
-        reputationScore: 500,
+        reputationScore: rep.score,        // now passing real reputation score
       })
-      console.log(`  AI Risk: ${riskResult.score}/100 (${riskResult.tier}) via ${riskResult.mode}`)
+      console.log(`  Risk score: ${riskResult.score}/100 (${riskResult.tier}) via ${riskResult.mode}`)
     } catch (e) {
-      console.log(`  AI Risk: skipped (${e.message})`)
+      console.log(`  Risk score: skipped (${e.message})`)
     }
 
-    // 3. Build human-readable reasoning from the AI result + compliance decision
-    const groqReasoning = [
-      `Risk assessment: ${riskResult.score}/100 — ${riskResult.tier} tier.`,
-      riskResult.reasons.join(' '),
-      compliant
-        ? `Heartbeat received ${staleSecs}s ago, within the ${HEARTBEAT_MAX}s SLA window. Epoch marked COMPLIANT — payment released to provider.`
-        : `Heartbeat is ${staleSecs}s stale, exceeding the ${HEARTBEAT_MAX}s SLA threshold. Epoch marked BREACH — buyer refunded.`,
-      riskResult.mode === 'groq'
-        ? 'Scored by Groq AI (llama-3.3-70b-versatile).'
-        : 'Local fallback scoring applied.',
-    ].join(' ')
+    // 5. Settle on-chain using Groq's verdict
+    const proofData = `lease-${leaseId}-epoch-${epoch}-ts-${Date.now()}-ok-${verdict.compliant}-conf-${verdict.confidence}`
+    const result    = await settleEpoch(leaseId, epoch, verdict.compliant, proofData)
 
-    // 4. Settle on-chain
-    const proofData = `lease-${leaseId}-epoch-${epoch}-ts-${Date.now()}-ok-${compliant}`
-    const result    = await settleEpoch(leaseId, epoch, compliant, proofData)
-
-    // 5. Persist everything to proofs.json — activity page reads this
+    // 6. Persist full proof including Groq reasoning, confidence, factors
     writeProof(leaseId, epoch, {
       leaseId:       String(leaseId),
       epoch,
@@ -126,13 +243,23 @@ async function tick() {
       hardwareClass: machine.hardwareClass,
       region:        machine.region,
       provider:      machine.provider,
-      compliant,
+      compliant:     verdict.compliant,
       staleSecs,
+      // Groq epoch verdict
+      groqReasoning: verdict.reasoning,
+      groqConfidence: verdict.confidence,
+      groqFactors:   verdict.factors,
+      verdictMode:   verdict.mode,
+      // Machine risk score (separate from epoch verdict)
       riskScore:     riskResult.score,
       riskTier:      riskResult.tier,
       riskReasons:   riskResult.reasons || [],
       riskMode:      riskResult.mode,
-      groqReasoning,
+      // Provider reputation at time of settlement
+      repScore:      rep.score,
+      repRate:       rep.rate,
+      repTotal:      rep.total,
+      // On-chain hashes
       proofData,
       proofHash:     result.proofHash    || null,
       routerTxHash:  result.routerTxHash || null,
@@ -149,7 +276,7 @@ async function tick() {
     }
 
     state.lastError      = null
-    state.lastTickStatus = `lease #${leaseId} epoch ${epoch} → ${compliant ? 'compliant' : 'breach'}`
+    state.lastTickStatus = `lease #${leaseId} epoch ${epoch} → ${verdict.compliant ? 'compliant' : 'breach'} (${verdict.mode})`
 
   } catch (err) {
     state.lastError      = err.message
@@ -164,7 +291,6 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 }
-
 function json(res, status, data) {
   cors(res)
   res.writeHead(status, { 'Content-Type': 'application/json' })
@@ -175,7 +301,6 @@ function json(res, status, data) {
 const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return }
 
-  // GET / or /health — UptimeRobot pings this
   if (req.url === '/' || req.url === '/health') {
     return json(res, 200, {
       status:         state.lastError ? 'error' : 'ok',
@@ -190,7 +315,6 @@ const server = http.createServer((req, res) => {
     })
   }
 
-  // GET /proofs — all settlements, sorted newest first
   if (req.url === '/proofs') {
     const all    = readProofs()
     const proofs = Object.values(all).sort(
@@ -199,7 +323,6 @@ const server = http.createServer((req, res) => {
     return json(res, 200, { count: proofs.length, proofs })
   }
 
-  // GET /proofs/:leaseId/:epoch
   const m = req.url.match(/^\/proofs\/(\d+)\/(\d+)$/)
   if (m) {
     const entry = readProofs()[`${m[1]}-${m[2]}`]
@@ -218,8 +341,8 @@ server.listen(PORT, () => {
   console.log(`   Mode:   ${state.mode.toUpperCase()}`)
   console.log(`   RPC:    ${RPC_URL}`)
   console.log(`   Poll:   every ${POLL_MS / 1000}s`)
+  console.log(`   Groq:   ${process.env.GROQ_API_KEY ? 'enabled ✓' : 'missing — local fallback active'}`)
   console.log('─'.repeat(50))
-
   tick()
   setInterval(tick, POLL_MS)
 })

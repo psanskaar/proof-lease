@@ -1,17 +1,18 @@
 'use client'
 import { useState } from 'react'
 import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt } from 'wagmi'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { parseEther, keccak256, toBytes, formatEther } from 'viem'
+import { Navbar } from '@/components/Navbar'
 import {
-  Server, CheckCircle, ExternalLink, ArrowLeft, Loader2,
+  Server, CheckCircle, ExternalLink, Loader2,
   Plus, AlertCircle, Clock, Wallet, Terminal, ChevronDown, ChevronUp, Copy,
 } from 'lucide-react'
 import Link from 'next/link'
+import { ConnectButton } from '@rainbow-me/rainbowkit'
 
 const REGISTRY = process.env.NEXT_PUBLIC_ASSET_REGISTRY as `0x${string}`
 const ESCROW   = process.env.NEXT_PUBLIC_LEASE_ESCROW   as `0x${string}`
-const EXPLORER = process.env.NEXT_PUBLIC_EXPLORER || 'https://scan.bohr.life'
+const EXPLORER = process.env.NEXT_PUBLIC_EXPLORER || 'https://scan.botchain.ai'
 
 const REGISTRY_ABI = [
   { name: 'registerMachine', type: 'function', stateMutability: 'payable',
@@ -55,8 +56,7 @@ function MachineRow({ machineId }: { machineId: bigint }) {
   })
   if (!m) return <div className="py-3 border-b border-gray-800 animate-pulse"><div className="h-3 bg-gray-800 rounded w-1/2"/></div>
   const staleMins = Math.round((Math.floor(Date.now() / 1000) - Number(m.lastHeartbeat)) / 60)
-  const isStale = staleMins > 5
-
+  const isStale   = staleMins > 5
   return (
     <div className="py-4 border-b border-gray-800 last:border-0">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
@@ -101,7 +101,6 @@ function WithdrawPanel({ address }: { address: `0x${string}` }) {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
   if (isSuccess) refetch()
   const amount = pending ?? 0n
-
   return (
     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
       <div className="flex items-center gap-2 mb-4">
@@ -114,9 +113,7 @@ function WithdrawPanel({ address }: { address: `0x${string}` }) {
           <div className={`text-2xl font-bold font-mono ${amount > 0n ? 'text-green-400' : 'text-gray-600'}`}>
             {parseFloat(formatEther(amount)).toFixed(6)} BOT
           </div>
-          <div className="text-xs text-gray-600 mt-1">
-            Compliant epoch payments + breach refunds accumulate here
-          </div>
+          <div className="text-xs text-gray-600 mt-1">Compliant epoch payments + breach refunds accumulate here</div>
         </div>
         <button
           onClick={() => writeContract({ address: ESCROW, abi: ESCROW_ABI, functionName: 'withdraw' })}
@@ -145,15 +142,16 @@ function WithdrawPanel({ address }: { address: `0x${string}` }) {
 function HeartbeatGuide({ address }: { address: string }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const registryAddr = process.env.NEXT_PUBLIC_ASSET_REGISTRY || '0x0'
   const script = `// heartbeat.js — run this on your machine as a background process
 // Install: npm install ethers dotenv
-// Run: node heartbeat.js
+// Run:     node heartbeat.js
 require('dotenv').config()
 const { ethers } = require('ethers')
 
-const RPC      = 'https://rpc.botchain.ai'
-const REGISTRY = '${process.env.NEXT_PUBLIC_ASSET_REGISTRY || '0xE147555124044D5EbDc7B702fAc8EE8d6FCfCe6f'}'
-const MACHINE_ID = process.env.MACHINE_ID || '1'  // your machine ID from registration
+const RPC        = 'https://rpc.botchain.ai'
+const REGISTRY   = '${registryAddr}'
+const MACHINE_ID = process.env.MACHINE_ID || '1'   // your machine ID from registration
 
 const provider = new ethers.JsonRpcProvider(RPC)
 const wallet   = new ethers.Wallet(process.env.PRIVATE_KEY, provider)
@@ -171,49 +169,35 @@ async function beat() {
   }
 }
 
-beat() // send immediately on start
-setInterval(beat, 30_000) // then every 30 seconds`
+beat()                         // send immediately on start
+setInterval(beat, 30_000)     // then every 30 seconds`
 
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 mb-6">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-800/40 transition rounded-xl"
-      >
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-800/40 transition rounded-xl">
         <div className="flex items-center gap-3">
           <Terminal size={18} className="text-blue-400"/>
           <div className="text-left">
             <div className="font-semibold">Heartbeat Setup — Required for earnings</div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              You must run this on your machine or you get marked as breach every epoch
-            </div>
+            <div className="text-xs text-gray-500 mt-0.5">Run this on your machine or every epoch is a breach</div>
           </div>
         </div>
         {open ? <ChevronUp size={16} className="text-gray-400"/> : <ChevronDown size={16} className="text-gray-400"/>}
       </button>
-
       {open && (
         <div className="px-6 pb-6 border-t border-gray-800 pt-4 space-y-4">
-          <div className="space-y-2 text-sm text-gray-300">
-            <p>
-              The AI agent checks your machine&apos;s heartbeat every epoch (every N seconds, based on the lease duration).
-              If your heartbeat is more than 300 seconds stale when the agent checks, that epoch is marked as a{' '}
-              <span className="text-red-400 font-medium">BREACH</span> and the buyer gets refunded.
-              If the heartbeat is fresh, you get paid.
-            </p>
-            <p className="text-gray-400">
-              Run the script below on the same server you&apos;re leasing. It sends a heartbeat transaction
-              to the blockchain every 30 seconds using your provider wallet.
-            </p>
-          </div>
-
+          <p className="text-sm text-gray-300">
+            The AI agent checks your machine&apos;s heartbeat every epoch. If the heartbeat is more than
+            300 seconds stale when the agent runs, that epoch is marked{' '}
+            <span className="text-red-400 font-medium">BREACH</span> and the buyer is refunded.
+            Keep heartbeat fresh and every compliant epoch pays you automatically.
+          </p>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500 font-mono">heartbeat.js</span>
-              <button
-                onClick={() => { navigator.clipboard.writeText(script); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition"
-              >
+              <button onClick={() => { navigator.clipboard.writeText(script); setCopied(true); setTimeout(()=>setCopied(false),1500) }}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition">
                 <Copy size={12}/>{copied ? 'Copied!' : 'Copy'}
               </button>
             </div>
@@ -221,22 +205,20 @@ setInterval(beat, 30_000) // then every 30 seconds`
               {script}
             </pre>
           </div>
-
           <div className="bg-gray-950 rounded-lg p-4 space-y-2 text-xs">
             <div className="font-medium text-gray-300">Setup steps:</div>
             <ol className="space-y-1 text-gray-400 list-decimal list-inside">
               <li>Copy the script to your server</li>
-              <li>Create a <span className="font-mono text-gray-300">.env</span> file with{' '}
+              <li>Create <span className="font-mono text-gray-300">.env</span> with{' '}
                 <span className="font-mono text-gray-300">PRIVATE_KEY=0x... MACHINE_ID=1</span></li>
               <li>Run <span className="font-mono text-gray-300">npm install ethers dotenv</span></li>
-              <li>Run <span className="font-mono text-gray-300">node heartbeat.js</span> in the background
-                (use <span className="font-mono text-gray-300">pm2</span> or <span className="font-mono text-gray-300">nohup</span> to keep it running)</li>
+              <li>Run <span className="font-mono text-gray-300">node heartbeat.js</span> — use{' '}
+                <span className="font-mono text-gray-300">pm2</span> or{' '}
+                <span className="font-mono text-gray-300">nohup</span> to keep it running</li>
             </ol>
           </div>
-
           <div className="bg-yellow-950/40 border border-yellow-900/50 rounded-lg p-3 text-xs text-yellow-300">
-            <strong>Important:</strong> Use the same wallet you registered with. The heartbeat is tied to your
-            provider address on-chain. Keep your PRIVATE_KEY safe — never commit it to GitHub.
+            <strong>Important:</strong> Use the same wallet you registered with. Never commit PRIVATE_KEY to GitHub.
           </div>
         </div>
       )}
@@ -247,48 +229,40 @@ setInterval(beat, 30_000) // then every 30 seconds`
 function AttestationGuide() {
   const [open, setOpen] = useState(false)
   return (
-    <div className="bg-gray-900 rounded-xl border border-orange-900/40 mb-6">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-800/40 transition rounded-xl"
-      >
+    <div className="bg-gray-900 rounded-xl border border-red-900/40 mb-6">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-800/40 transition rounded-xl">
         <div className="flex items-center gap-3">
-          <AlertCircle size={18} className="text-orange-400"/>
+          <AlertCircle size={18} className="text-red-400"/>
           <div className="text-left">
-            <div className="font-semibold">Attestation URI — How buyers contact you</div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              Without this, buyers have no way to get SSH access or verify your hardware
-            </div>
+            <div className="font-semibold">Attestation URI — How buyers find and contact you</div>
+            <div className="text-xs text-gray-500 mt-0.5">Required to register — without it buyers have no way to reach you</div>
           </div>
         </div>
         {open ? <ChevronUp size={16} className="text-gray-400"/> : <ChevronDown size={16} className="text-gray-400"/>}
       </button>
-
       {open && (
-        <div className="px-6 pb-6 border-t border-orange-900/30 pt-4 space-y-4 text-sm text-gray-300">
-          <p>
-            When a buyer leases your machine, the only way they can reach you or access the machine
-            is through your Attestation URI. This is a URL you publish that contains:
-          </p>
+        <div className="px-6 pb-6 border-t border-red-900/30 pt-4 space-y-4 text-sm text-gray-300">
+          <p>Your Attestation URI is a public URL that buyers open after creating a lease to get access to your machine. It must contain:</p>
           <ul className="space-y-1 text-gray-400 list-disc list-inside">
-            <li>Hardware specs and proof (GPU model, RAM, storage)</li>
-            <li>How buyers can request SSH access or an API endpoint</li>
+            <li>Hardware specs and proof (GPU model, VRAM, RAM, storage)</li>
+            <li>How to request SSH access or an API endpoint</li>
             <li>Your contact method (email, Telegram, Discord)</li>
             <li>Your uptime SLA commitment</li>
           </ul>
           <div className="bg-gray-950 rounded-lg p-4 text-xs space-y-2">
-            <div className="text-gray-400 font-medium">Easiest option — GitHub Gist:</div>
+            <div className="text-gray-400 font-medium">Easiest option — GitHub Gist (free, public):</div>
             <ol className="text-gray-400 list-decimal list-inside space-y-1">
               <li>Go to <a href="https://gist.github.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">gist.github.com</a></li>
               <li>Create a public gist with your machine specs and contact info</li>
-              <li>Copy the raw URL (click Raw → copy URL)</li>
-              <li>Use that URL as your Attestation URI when registering</li>
+              <li>Click <strong>Raw</strong> and copy the URL</li>
+              <li>Use that URL as your Attestation URI below</li>
             </ol>
           </div>
-          <p className="text-gray-500 text-xs">
-            Attestation URI is <strong className="text-red-400">required</strong> to register a machine.
+          <div className="bg-red-950/30 border border-red-900/40 rounded-lg p-3 text-xs text-red-300">
+            Attestation URI is <strong>required</strong> to register a machine.
             Buyers cannot verify your hardware or contact you without it.
-          </p>
+          </div>
         </div>
       )}
     </div>
@@ -311,9 +285,10 @@ export default function ProviderPage() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
   const handleRegister = () => {
-    if (!form.deviceId.trim()) { alert('Enter a Device ID.'); return }
-    if (!form.attestationURI.trim()) { alert('Attestation URI is required. See the guide above.'); return }
-    try { new URL(form.attestationURI.trim()) } catch { alert('Attestation URI must be a valid URL (starting with https://).'); return }
+    if (!form.deviceId.trim())       { alert('Enter a Device ID.'); return }
+    if (!form.attestationURI.trim()) { alert('Attestation URI is required — see the guide above.'); return }
+    try { new URL(form.attestationURI.trim()) }
+    catch { alert('Attestation URI must be a valid URL starting with https://'); return }
     const hardwareHash = keccak256(toBytes(form.deviceId.trim() + form.hardwareClass))
     writeContract({
       address: REGISTRY, abi: REGISTRY_ABI, functionName: 'registerMachine',
@@ -324,22 +299,12 @@ export default function ProviderPage() {
 
   return (
     <div className="min-h-screen">
-      <nav className="border-b border-gray-800 px-6 py-4 flex justify-between items-center sticky top-0 bg-gray-950/90 backdrop-blur z-40">
-        <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white transition">
-          <ArrowLeft size={16}/><span className="text-blue-400 font-bold">ProofLease</span>
-        </Link>
-        <div className="flex items-center gap-4">
-          <Link href="/marketplace" className="text-sm text-gray-400 hover:text-white transition">Marketplace</Link>
-          <Link href="/activity"    className="text-sm text-gray-400 hover:text-white transition">Activity</Link>
-          <ConnectButton/>
-        </div>
-      </nav>
-
+      <Navbar/>
       <div className="max-w-3xl mx-auto px-6 py-12">
         <h1 className="text-3xl font-bold mb-2">Provider Dashboard</h1>
         <p className="text-gray-400 mb-8 text-sm leading-relaxed">
-          Register your compute machine as a verifiable asset on BOT Chain. The AI agent monitors
-          heartbeats and releases payments automatically each epoch.
+          Register your compute machine as a verifiable on-chain asset. The AI agent monitors heartbeats
+          and releases payments automatically each epoch — no manual action needed.
         </p>
 
         {!isConnected ? (
@@ -378,7 +343,7 @@ export default function ProviderPage() {
                     <CheckCircle size={44} className="text-green-400 mx-auto mb-4"/>
                     <p className="text-green-400 font-semibold mb-2">Machine Registered!</p>
                     <p className="text-gray-500 text-sm mb-4">
-                      Now set up the heartbeat script (see above) — without it every epoch will be a breach.
+                      Now set up the heartbeat script — without it every epoch will be a breach.
                     </p>
                     {hash && (
                       <a href={`${EXPLORER}/tx/${hash}`} target="_blank" rel="noopener noreferrer"
@@ -423,15 +388,24 @@ export default function ProviderPage() {
                     </div>
                     <div>
                       <label className="block text-sm text-gray-400 mb-1">
-                        Attestation URI <span className="text-red-400 text-xs font-semibold">★ Required</span>
+                        Attestation URI{' '}
+                        <span className="text-red-400 text-xs font-semibold">★ Required</span>
                       </label>
-                      <input value={form.attestationURI}
+                      <input
+                        value={form.attestationURI}
                         placeholder="https://gist.github.com/you/abc123/raw — hardware specs + contact info"
                         onChange={e => setForm(s => ({ ...s, attestationURI: e.target.value }))}
-                        className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm"/>
+                        className={`w-full bg-gray-950 border rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm ${
+                          form.attestationURI && !isValidUrl(form.attestationURI)
+                            ? 'border-red-600'
+                            : form.attestationURI
+                            ? 'border-green-700'
+                            : 'border-gray-700'
+                        }`}
+                      />
                       <p className="text-xs text-gray-500 mt-1">
                         Buyers use this to verify your hardware and request SSH/API access.
-                        Registration is blocked without a valid URL — see the guide above.
+                        Registration is blocked without a valid https:// URL — see the guide above.
                       </p>
                     </div>
                     <div className="bg-gray-950 rounded-lg p-4 text-sm flex justify-between">
@@ -457,4 +431,8 @@ export default function ProviderPage() {
       </div>
     </div>
   )
+}
+
+function isValidUrl(s: string) {
+  try { return Boolean(new URL(s)) } catch { return false }
 }
