@@ -4,9 +4,10 @@ import {
   useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt,
 } from 'wagmi'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { Navbar } from '@/components/Navbar'
 import { parseEther, keccak256, toBytes, formatEther } from 'viem'
 import {
-  Cpu, MapPin, ExternalLink, ArrowLeft, Loader2, CheckCircle,
+  Cpu, MapPin, ExternalLink, Loader2, CheckCircle,
   Shield, Copy, AlertTriangle, Clock, Activity, Server,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -495,17 +496,7 @@ export default function MarketplacePage() {
 
   return (
     <div className="min-h-screen">
-      <nav className="border-b border-gray-800 px-6 py-4 flex justify-between items-center sticky top-0 bg-gray-950/90 backdrop-blur z-40">
-        <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white transition">
-          <ArrowLeft size={16}/><span className="text-blue-400 font-bold">ProofLease</span>
-        </Link>
-        <div className="flex items-center gap-4">
-          <Link href="/provider" className="text-sm text-gray-400 hover:text-white transition">Provider</Link>
-          <Link href="/activity" className="text-sm text-gray-400 hover:text-white transition">Activity</Link>
-          <Link href="/verify"   className="text-sm text-gray-400 hover:text-white transition">Verify</Link>
-          <ConnectButton/>
-        </div>
-      </nav>
+      <Navbar/>
 
       <div className="max-w-5xl mx-auto px-6 py-12">
         {isConnected && address && <MyLeases address={address}/>}

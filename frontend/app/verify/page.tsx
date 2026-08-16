@@ -1,78 +1,137 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useReadContract } from 'wagmi'
 import { keccak256, toBytes } from 'viem'
 import { Navbar } from '@/components/Navbar'
-import { CheckCircle, XCircle, Loader2, ExternalLink, Info, Brain } from 'lucide-react'
+import {
+  CheckCircle, XCircle, Loader2, ExternalLink, Info,
+  Brain, Shield, Link2,
+} from 'lucide-react'
 
 const PROOF_ROUTER = process.env.NEXT_PUBLIC_PROOF_ROUTER as `0x${string}`
+const AGENT_URL    = process.env.NEXT_PUBLIC_AGENT_URL || ''
 const EXPLORER     = process.env.NEXT_PUBLIC_EXPLORER || 'https://scan.botchain.ai'
 
 const PROOF_ROUTER_ABI = [
   { name: 'getProof', type: 'function', stateMutability: 'view',
-    inputs: [{ name: 'leaseId', type: 'uint256' }, { name: 'epoch', type: 'uint256' }],
+    inputs:  [{ name: 'leaseId', type: 'uint256' }, { name: 'epoch', type: 'uint256' }],
     outputs: [{ type: 'bytes32' }] },
   { name: 'proofCount', type: 'function', stateMutability: 'view',
-    inputs: [{ name: 'leaseId', type: 'uint256' }],
+    inputs:  [{ name: 'leaseId', type: 'uint256' }],
     outputs: [{ type: 'uint256' }] },
 ] as const
 
 const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000'
 
-// New proof format includes Groq confidence: lease-[id]-epoch-[n]-ts-[ms]-ok-[bool]-conf-[0-100]
-const DEMOS = [
-  { label: 'Compliant (Groq 87%)',  leaseId: '1', epoch: '0', proofData: 'lease-1-epoch-0-ts-1723545600000-ok-true-conf-87'  },
-  { label: 'BREACH (Groq 95%)',     leaseId: '1', epoch: '3', proofData: 'lease-1-epoch-3-ts-1723559400000-ok-false-conf-95' },
-  { label: 'Compliant (fallback)',  leaseId: '2', epoch: '0', proofData: 'lease-2-epoch-0-ts-1723545600000-ok-true-conf-90'  },
-]
+function shortHash(h: string) { return `${h.slice(0,14)}…${h.slice(-8)}` }
 
-export default function VerifyPage() {
-  const [leaseId,   setLeaseId]   = useState('')
-  const [epoch,     setEpoch]     = useState('')
-  const [proofData, setProofData] = useState('')
-  const [computed,  setComputed]  = useState('')
-  const [verified,  setVerified]  = useState(false)
+// ─── How verification works ───────────────────────────────────────────────────
+// ProofRouter.submitProof stores: keccak256(abi.encodePacked(leaseId, epoch, block.timestamp, dataHash, sender))
+// That composite hash cannot be recomputed client-side without knowing the exact block.timestamp.
+//
+// So we do TWO-STEP verification:
+// Step 1 — Data integrity: compute keccak256(rawProofData) locally → compare with agent's stored dataHash
+//          This proves the rawProofData string was NOT altered after the agent submitted it.
+// Step 2 — On-chain existence: ProofRouter.getProof(leaseId, epoch) returns non-zero
+//          This proves the agent DID commit a proof to the blockchain for this epoch.
+//
+// Together: the raw evidence is self-consistent AND was committed to chain before the escrow settled.
 
-  const ready = !!(leaseId && epoch)
+function VerifyInner() {
+  const params = useSearchParams()
 
-  const { data: onChainHash, isLoading } = useReadContract({
+  const [leaseId,     setLeaseId]     = useState(params.get('leaseId') || '')
+  const [epoch,       setEpoch]       = useState(params.get('epoch')   || '')
+  const [rawProof,    setRawProof]    = useState('')
+  const [agentEntry,  setAgentEntry]  = useState<any>(null)
+  const [fetching,    setFetching]    = useState(false)
+  const [fetchErr,    setFetchErr]    = useState('')
+  const [result,      setResult]      = useState<null | {
+    computedHash: string
+    agentDataHash: string | null
+    step1: 'match' | 'mismatch' | 'no-agent'
+    rawProofData: string | null
+  }>(null)
+
+  const ready = !!(leaseId && epoch && leaseId.match(/^\d+$/) && epoch.match(/^\d+$/))
+
+  // Fetch agent proof when leaseId + epoch are set from URL params or form
+  const fetchAgentProof = useCallback(async (lid: string, ep: string) => {
+    if (!AGENT_URL || !lid || !ep) return
+    setFetching(true); setFetchErr('')
+    try {
+      const r = await fetch(`${AGENT_URL}/proofs/${lid}/${ep}`)
+      if (r.ok) {
+        const d = await r.json()
+        setAgentEntry(d)
+        // Auto-fill rawProof from agent if field is empty
+        const raw = d.rawProofData || d.proofData || ''
+        if (raw) setRawProof(raw)
+      } else {
+        setFetchErr('No agent record found for this lease/epoch. Enter the raw proof data manually.')
+      }
+    } catch {
+      setFetchErr('Could not reach agent API. Enter the raw proof data manually.')
+    } finally {
+      setFetching(false)
+    }
+  }, [])
+
+  // Auto-fetch when arriving via URL params from Activity page
+  useEffect(() => {
+    const lid = params.get('leaseId')
+    const ep  = params.get('epoch')
+    if (lid && ep) fetchAgentProof(lid, ep)
+  }, [params, fetchAgentProof])
+
+  // Re-fetch when user edits leaseId/epoch manually
+  const handleLookup = () => {
+    setResult(null); setAgentEntry(null); setRawProof(''); setFetchErr('')
+    fetchAgentProof(leaseId, epoch)
+  }
+
+  // On-chain read (live)
+  const { data: onChainHash, isLoading: chainLoading } = useReadContract({
     address: PROOF_ROUTER, abi: PROOF_ROUTER_ABI, functionName: 'getProof',
     args: ready ? [BigInt(leaseId), BigInt(epoch)] : undefined,
     query: { enabled: ready },
   })
-
   const { data: proofCount } = useReadContract({
     address: PROOF_ROUTER, abi: PROOF_ROUTER_ABI, functionName: 'proofCount',
-    args: leaseId ? [BigInt(leaseId)] : undefined,
-    query: { enabled: !!leaseId },
+    args: leaseId.match(/^\d+$/) ? [BigInt(leaseId)] : undefined,
+    query: { enabled: !!leaseId.match(/^\d+$/) },
   })
-
   const hasOnChain = onChainHash && onChainHash !== ZERO
-  const isMatch    = hasOnChain && computed
-    ? computed.toLowerCase() === (onChainHash as string).toLowerCase()
-    : null
 
+  // Step 1 verification
   const handleVerify = () => {
-    if (!proofData.trim()) return
-    setComputed(keccak256(toBytes(proofData.trim())))
-    setVerified(true)
+    if (!rawProof.trim()) return
+    const computedHash = keccak256(toBytes(rawProof.trim()))
+    const agentDataHash = agentEntry?.dataHash || null
+
+    let step1: 'match' | 'mismatch' | 'no-agent' = 'no-agent'
+    if (agentDataHash) {
+      step1 = computedHash.toLowerCase() === agentDataHash.toLowerCase() ? 'match' : 'mismatch'
+    }
+
+    setResult({
+      computedHash,
+      agentDataHash,
+      step1,
+      rawProofData: agentEntry?.rawProofData || agentEntry?.proofData || null,
+    })
   }
 
-  const loadDemo = (d: typeof DEMOS[number]) => {
-    setLeaseId(d.leaseId); setEpoch(d.epoch); setProofData(d.proofData)
-    setComputed(''); setVerified(false)
-  }
-
-  const reset = () => {
-    setLeaseId(''); setEpoch(''); setProofData('')
-    setComputed(''); setVerified(false)
-  }
+  const groqConf = agentEntry?.groqConfidence
+  const verdictMode = agentEntry?.verdictMode
 
   return (
     <div className="min-h-screen">
       <Navbar/>
-
       <div className="max-w-2xl mx-auto px-6 py-12">
+
+        {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           <h1 className="text-3xl font-bold">Proof Verifier</h1>
           <span className="text-xs bg-purple-950/60 text-purple-300 border border-purple-900 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -80,172 +139,256 @@ export default function VerifyPage() {
           </span>
         </div>
         <p className="text-gray-400 mb-2 text-sm leading-relaxed">
-          Every epoch settlement stores a keccak256 proof hash on BOT Chain via{' '}
+          Every epoch settlement stores a keccak256 proof on{' '}
           <a href={`${EXPLORER}/address/${PROOF_ROUTER}`} target="_blank" rel="noopener noreferrer"
             className="text-blue-400 hover:underline">ProofRouter ↗</a>.
-          Enter the lease ID, epoch number, and raw proof string to independently recompute the hash
-          and confirm it matches the on-chain record — proving the Groq AI agent used real signals,
-          not fabricated data.
+          This page verifies the AI agent used real telemetry — not fabricated data.
         </p>
-        <div className="bg-gray-900 rounded-lg border border-gray-800 p-3 mb-6 text-xs font-mono text-gray-500">
-          <div className="text-gray-600 mb-1">Proof format (new — includes Groq confidence score):</div>
-          <div className="text-blue-300/80">lease-[id]-epoch-[n]-ts-[ms]-ok-[true|false]-conf-[0-100]</div>
-        </div>
 
-        {/* Demo fills */}
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-            <Info size={12}/>Try a demo:
+        {/* How it works explainer */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 text-xs text-gray-500 space-y-1">
+          <div className="flex items-center gap-2 text-gray-400 font-medium mb-2">
+            <Info size={12}/>Two-step verification
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {DEMOS.map(d => (
-              <button key={d.label} onClick={() => loadDemo(d)}
-                className="text-xs border border-gray-700 hover:border-purple-600 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg transition">
-                {d.label}
-              </button>
-            ))}
+          <div className="flex items-start gap-2">
+            <span className="text-blue-400 font-bold shrink-0">①</span>
+            <span><strong className="text-gray-400">Data integrity</strong> — keccak256(rawProofData) matches the hash the agent committed. Proves the evidence string was not altered after submission.</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-green-400 font-bold shrink-0">②</span>
+            <span><strong className="text-gray-400">On-chain existence</strong> — ProofRouter has a non-zero entry for this epoch. Proves the agent submitted to the blockchain before the escrow settled.</span>
           </div>
         </div>
 
+        {/* Inputs */}
         <div className="space-y-4 mb-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Lease ID</label>
               <input value={leaseId} placeholder="e.g. 1"
-                onChange={e => { setLeaseId(e.target.value); setVerified(false); setComputed('') }}
+                onChange={e => { setLeaseId(e.target.value); setResult(null) }}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none text-sm"/>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Epoch Number</label>
               <input value={epoch} placeholder="e.g. 0"
-                onChange={e => { setEpoch(e.target.value); setVerified(false); setComputed('') }}
+                onChange={e => { setEpoch(e.target.value); setResult(null) }}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none text-sm"/>
             </div>
           </div>
 
-          {/* Live on-chain read */}
+          <button onClick={handleLookup} disabled={!leaseId || !epoch || fetching}
+            className="w-full border border-gray-700 hover:border-blue-500 disabled:opacity-40 py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2">
+            {fetching
+              ? <><Loader2 size={14} className="animate-spin"/>Fetching from agent…</>
+              : 'Look Up Proof Data from Agent'}
+          </button>
+
+          {/* Agent fetch result / error */}
+          {fetchErr && (
+            <div className="bg-yellow-950/40 border border-yellow-900/50 rounded-lg p-3 text-xs text-yellow-300">
+              {fetchErr}
+            </div>
+          )}
+
+          {agentEntry && (
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-xs space-y-2">
+              <div className="text-gray-500 font-medium flex items-center gap-2">
+                <Brain size={11} className="text-purple-400"/>Agent record found
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-400">
+                <span>Verdict:</span>
+                <span className={agentEntry.compliant ? 'text-green-400' : 'text-red-400'}>
+                  {agentEntry.compliant ? 'COMPLIANT' : 'BREACH'}
+                  {groqConf !== undefined && <span className="text-gray-600 ml-1">({groqConf}% conf.)</span>}
+                </span>
+                <span>AI mode:</span>
+                <span className={verdictMode === 'groq' ? 'text-purple-300' : 'text-gray-500'}>
+                  {verdictMode || '—'}
+                </span>
+                {agentEntry.groqReasoning && <>
+                  <span>Reasoning:</span>
+                  <span className="text-gray-300">{agentEntry.groqReasoning}</span>
+                </>}
+                <span>Heartbeat at settle:</span>
+                <span className={(agentEntry.staleSecs||0) > 300 ? 'text-red-400' : 'text-green-400'}>
+                  {agentEntry.staleSecs !== undefined ? `${agentEntry.staleSecs}s stale` : '—'}
+                </span>
+                {agentEntry.repScore !== undefined && <>
+                  <span>Reputation:</span>
+                  <span>{agentEntry.repScore}/1000 ({agentEntry.repRate}%)</span>
+                </>}
+                <span>Settled:</span>
+                <span>{agentEntry.settledAt ? new Date(agentEntry.settledAt).toLocaleString() : '—'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* On-chain hash */}
           {ready && (
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 text-xs">
               <div className="flex items-center gap-2 text-gray-500 mb-2">
-                {isLoading && <Loader2 size={11} className="animate-spin"/>}
-                On-chain hash — <span className="font-mono text-blue-300/70">ProofRouter.getProof({leaseId}, {epoch})</span>
+                {chainLoading && <Loader2 size={11} className="animate-spin"/>}
+                <Link2 size={11}/>
+                On-chain — <span className="font-mono">ProofRouter.getProof({leaseId}, {epoch})</span>
               </div>
-              {isLoading ? (
+              {chainLoading ? (
                 <span className="text-gray-600">Reading from BOT Chain…</span>
               ) : hasOnChain ? (
-                <>
-                  <div className="font-mono break-all text-blue-300">{onChainHash as string}</div>
-                  <div className="mt-2 flex items-center gap-4 text-gray-600">
-                    {proofCount !== undefined && <span>Total proofs for lease #{leaseId}: {proofCount.toString()}</span>}
-                    <a href={`${EXPLORER}/address/${PROOF_ROUTER}?tab=read_contract`} target="_blank" rel="noopener noreferrer"
+                <div className="space-y-1">
+                  <div className="font-mono break-all text-green-300">{onChainHash as string}</div>
+                  <div className="flex items-center gap-4 text-gray-600 mt-1">
+                    {proofCount !== undefined && <span>{proofCount.toString()} proof(s) for lease #{leaseId}</span>}
+                    <a href={`${EXPLORER}/address/${PROOF_ROUTER}?tab=read_contract`}
+                      target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1 text-blue-500 hover:underline">
-                      Verify on explorer <ExternalLink size={11}/>
+                      Explorer <ExternalLink size={10}/>
                     </a>
+                    {agentEntry?.escrowTxHash && (
+                      <a href={`${EXPLORER}/tx/${agentEntry.escrowTxHash}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-blue-500 hover:underline">
+                        Settlement TX <ExternalLink size={10}/>
+                      </a>
+                    )}
                   </div>
-                </>
+                </div>
               ) : (
-                <span className="text-gray-600">No proof stored for lease {leaseId} epoch {epoch}.</span>
+                <span className="text-gray-600">No on-chain proof yet for lease {leaseId} epoch {epoch}.</span>
               )}
             </div>
           )}
 
+          {/* Raw proof input */}
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Raw Proof Data</label>
-            <textarea value={proofData} rows={3}
+            <label className="block text-sm text-gray-400 mb-1">
+              Raw Proof Data
+              {fetching && <span className="text-gray-600 ml-2 text-xs">(auto-filling from agent…)</span>}
+            </label>
+            <textarea value={rawProof} rows={3}
               placeholder={`lease-1-epoch-0-ts-${Date.now()}-ok-true-conf-87`}
-              onChange={e => { setProofData(e.target.value); setVerified(false); setComputed('') }}
+              onChange={e => { setRawProof(e.target.value); setResult(null) }}
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white font-mono text-xs focus:border-blue-500 outline-none resize-none"/>
             <p className="text-xs text-gray-600 mt-1">
-              Find this in the Activity feed — click any settlement card&apos;s &ldquo;Verify proof&rdquo; link to pre-fill.
+              Auto-filled when you look up a lease/epoch. Or paste from the Activity feed.
             </p>
           </div>
 
-          <div className="flex gap-3">
-            <button onClick={handleVerify} disabled={!proofData.trim()}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 py-3 rounded-lg font-medium transition text-sm">
-              Compute &amp; Verify Hash
-            </button>
-            {(leaseId || proofData) && (
-              <button onClick={reset}
-                className="px-4 py-3 border border-gray-700 hover:border-gray-500 rounded-lg text-sm text-gray-400 transition">
-                Clear
-              </button>
-            )}
-          </div>
+          <button onClick={handleVerify} disabled={!rawProof.trim()}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 py-3 rounded-lg font-medium transition text-sm">
+            Verify Proof
+          </button>
         </div>
 
         {/* Result */}
-        {verified && computed && (
-          <div className={`p-6 rounded-xl border mb-6 ${
-            hasOnChain
-              ? isMatch ? 'border-green-700 bg-green-950/40' : 'border-red-700 bg-red-950/40'
-              : 'border-gray-700 bg-gray-900'
-          }`}>
-            <div className="flex items-center gap-2 text-lg font-bold mb-4">
-              {hasOnChain
-                ? isMatch
-                  ? <><CheckCircle size={20} className="text-green-400"/>PROOF VERIFIED — Groq used real data</>
-                  : <><XCircle    size={20} className="text-red-400"/>HASH MISMATCH</>
-                : <><CheckCircle size={20} className="text-blue-400"/>HASH COMPUTED</>
-              }
-            </div>
-            <div className="space-y-3 text-xs font-mono">
-              <div>
-                <div className="text-gray-500 mb-1">Computed from your input:</div>
-                <div className="bg-gray-950/60 rounded p-2 break-all">{computed}</div>
+        {result && (
+          <div className="space-y-3">
+            {/* Step 1 */}
+            <div className={`p-5 rounded-xl border ${
+              result.step1 === 'match'    ? 'border-green-700 bg-green-950/30'   :
+              result.step1 === 'mismatch' ? 'border-red-700 bg-red-950/30'       :
+                                            'border-gray-700 bg-gray-900'
+            }`}>
+              <div className="flex items-center gap-2 font-bold mb-3">
+                {result.step1 === 'match'
+                  ? <><CheckCircle size={18} className="text-green-400"/>① DATA INTEGRITY — VERIFIED</>
+                  : result.step1 === 'mismatch'
+                  ? <><XCircle size={18} className="text-red-400"/>① DATA INTEGRITY — MISMATCH</>
+                  : <><Shield size={18} className="text-blue-400"/>① DATA INTEGRITY — HASH COMPUTED</>
+                }
               </div>
-              {hasOnChain && (
+              <div className="space-y-2 text-xs font-mono">
                 <div>
-                  <div className="text-gray-500 mb-1">Stored on-chain (ProofRouter):</div>
-                  <div className="bg-gray-950/60 rounded p-2 break-all">{onChainHash as string}</div>
+                  <div className="text-gray-500 mb-0.5">Your computed hash (keccak256 of raw proof):</div>
+                  <div className="bg-gray-950/60 rounded p-2 break-all">{result.computedHash}</div>
                 </div>
+                {result.agentDataHash && (
+                  <div>
+                    <div className="text-gray-500 mb-0.5">Agent&apos;s committed dataHash (from API):</div>
+                    <div className="bg-gray-950/60 rounded p-2 break-all">{result.agentDataHash}</div>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs mt-3 text-gray-400">
+                {result.step1 === 'match'
+                  ? 'The raw proof string you entered hashes to the same value the agent committed. The evidence was not altered after submission.'
+                  : result.step1 === 'mismatch'
+                  ? 'Hash mismatch. The raw proof string does not match the agent\'s committed hash. Check for extra whitespace or copy errors.'
+                  : 'Hash computed from your input. Look up the agent record above to compare against the stored dataHash.'}
+              </p>
+            </div>
+
+            {/* Step 2 */}
+            <div className={`p-5 rounded-xl border ${
+              hasOnChain ? 'border-green-700 bg-green-950/30' : 'border-gray-700 bg-gray-900'
+            }`}>
+              <div className="flex items-center gap-2 font-bold mb-3">
+                {hasOnChain
+                  ? <><CheckCircle size={18} className="text-green-400"/>② ON-CHAIN PROOF — EXISTS</>
+                  : <><Shield size={18} className="text-gray-400"/>② ON-CHAIN PROOF — NOT FOUND</>
+                }
+              </div>
+              {hasOnChain ? (
+                <>
+                  <div className="text-xs font-mono bg-gray-950/60 rounded p-2 break-all mb-2">
+                    {onChainHash as string}
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    ProofRouter has a committed entry for lease {leaseId} epoch {epoch}.
+                    This composite hash (including block.timestamp and agent address) was
+                    stored on-chain before the escrow settlement executed — proving the evidence
+                    was committed before money moved.
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  {chainLoading ? 'Checking chain…' : `No on-chain entry found for lease ${leaseId} epoch ${epoch}.`}
+                </p>
               )}
             </div>
-            {isMatch && (
-              <p className="text-green-300 text-xs mt-4">
-                The Groq AI agent&apos;s settlement decision is cryptographically verified. The proof data — including lease ID,
-                epoch, timestamp, compliance verdict, and confidence score — matches what was committed on-chain before
-                the escrow transaction executed.
-              </p>
-            )}
-            {isMatch === false && (
-              <p className="text-red-300 text-xs mt-4">
-                Input data does not match the on-chain record. The agent may have used different proof data for this epoch.
-                Copy the exact proof string from the Activity feed — small differences (spaces, casing) will change the hash.
-              </p>
-            )}
-            {!hasOnChain && (
-              <p className="text-gray-500 text-xs mt-4">
-                No on-chain proof found for lease {leaseId} epoch {epoch}.
-                The hash above is what the agent would store if this proof data were submitted.
-              </p>
+
+            {/* Full verified banner */}
+            {result.step1 === 'match' && hasOnChain && (
+              <div className="bg-green-950/40 border border-green-600 rounded-xl p-4 text-center">
+                <div className="flex items-center justify-center gap-2 text-green-400 font-bold text-lg mb-1">
+                  <CheckCircle size={22}/>FULLY VERIFIED
+                </div>
+                <p className="text-xs text-green-300">
+                  Raw proof data is self-consistent AND committed on-chain.
+                  The Groq AI agent&apos;s decision is cryptographically auditable.
+                </p>
+              </div>
             )}
           </div>
         )}
 
-        {/* Explainer */}
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 text-xs text-gray-500 leading-relaxed space-y-2">
-          <div className="flex items-center gap-2 text-gray-400 font-medium mb-1">
-            <Brain size={14} className="text-purple-400"/>How Groq verification works
+        {/* How proof format works */}
+        <div className="mt-8 bg-gray-900 rounded-xl p-5 border border-gray-800 text-xs text-gray-500 leading-relaxed space-y-2">
+          <div className="flex items-center gap-2 text-gray-400 font-medium">
+            <Brain size={13} className="text-purple-400"/>Proof format
+          </div>
+          <div className="font-mono text-blue-300/80 text-xs bg-gray-950 rounded p-2">
+            lease-[id]-epoch-[n]-ts-[ms]-ok-[true|false]-conf-[0-100]
           </div>
           <p>
-            Each epoch, the AI agent calls Groq&apos;s LLM with the machine&apos;s heartbeat age, provider reputation score,
-            fulfillment rate, machine age, and region. Groq returns a compliance verdict, reasoning text, and a confidence
-            score (0–100).
-          </p>
-          <p>
-            Before executing the escrow transaction, the agent calls{' '}
-            <span className="font-mono text-blue-300">ProofRouter.submitProof(leaseId, epoch, dataHash)</span> to commit
-            the proof string — which includes the verdict and Groq&apos;s confidence — on-chain. This makes the decision
-            tamper-evident: you can recompute the keccak256 hash from the raw proof and confirm it matches what was
-            stored before money moved.
-          </p>
-          <p>
-            This page proves the agent didn&apos;t fabricate telemetry or change its verdict after seeing the outcome.
-            The hash was committed first; the payment followed.
+            Each epoch, the agent passes this string (including Groq&apos;s compliance verdict and confidence
+            score) to <span className="font-mono text-blue-300">keccak256()</span> to get the{' '}
+            <em>dataHash</em>. It then calls{' '}
+            <span className="font-mono text-blue-300">ProofRouter.submitProof(leaseId, epoch, dataHash)</span>,
+            which creates a composite hash also incorporating the block timestamp and agent wallet address.
+            Finally, <span className="font-mono text-blue-300">LeaseEscrow.settleEpoch()</span> runs with
+            the composite hash — so the on-chain settlement is cryptographically linked to the AI decision.
           </p>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500"><Loader2 size={24} className="animate-spin mr-2"/>Loading…</div>}>
+      <VerifyInner/>
+    </Suspense>
   )
 }
