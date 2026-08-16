@@ -312,18 +312,12 @@ export default function ProviderPage() {
 
   const handleRegister = () => {
     if (!form.deviceId.trim()) { alert('Enter a Device ID.'); return }
-    if (!form.attestationURI.trim()) {
-      const ok = confirm(
-        'No Attestation URI provided.\n\n' +
-        'Buyers will have no way to verify your hardware or contact you to get access.\n\n' +
-        'Are you sure you want to continue without one?'
-      )
-      if (!ok) return
-    }
+    if (!form.attestationURI.trim()) { alert('Attestation URI is required. See the guide above.'); return }
+    try { new URL(form.attestationURI.trim()) } catch { alert('Attestation URI must be a valid URL (starting with https://).'); return }
     const hardwareHash = keccak256(toBytes(form.deviceId.trim() + form.hardwareClass))
     writeContract({
       address: REGISTRY, abi: REGISTRY_ABI, functionName: 'registerMachine',
-      args: [form.hardwareClass, form.region, form.attestationURI, hardwareHash],
+      args: [form.hardwareClass, form.region, form.attestationURI.trim(), hardwareHash],
       value: parseEther('0.001'),
     })
   }
