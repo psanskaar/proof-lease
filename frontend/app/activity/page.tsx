@@ -92,11 +92,12 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         </div>
         <div className="bg-gray-900/60 rounded-lg p-2 text-center">
           <div className="text-xs text-gray-500 mb-0.5 flex items-center justify-center gap-1">
-            <Clock size={10}/>Heartbeat
+            <Clock size={10}/>Heartbeat at settlement
           </div>
           <div className={`font-bold text-sm ${(entry.staleSecs || 0) > 300 ? 'text-red-400' : 'text-green-400'}`}>
-            {entry.staleSecs !== undefined ? `${entry.staleSecs}s ago` : '—'}
+            {entry.staleSecs !== undefined ? `${entry.staleSecs}s stale` : '—'}
           </div>
+          <div className="text-xs text-gray-600 mt-0.5">snapshot when epoch closed</div>
         </div>
         <div className="bg-gray-900/60 rounded-lg p-2 text-center">
           <div className="text-xs text-gray-500 mb-0.5">Outcome</div>

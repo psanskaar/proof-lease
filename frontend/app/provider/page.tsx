@@ -286,8 +286,8 @@ function AttestationGuide() {
             </ol>
           </div>
           <p className="text-gray-500 text-xs">
-            Machines without an Attestation URI get -15 points on their risk score and show a warning to buyers.
-            Buyers are advised not to lease machines with no attestation.
+            Attestation URI is <strong className="text-red-400">required</strong> to register a machine.
+            Buyers cannot verify your hardware or contact you without it.
           </p>
         </div>
       )}
@@ -423,7 +423,7 @@ export default function ProviderPage() {
                     </div>
                     <div>
                       <label className="block text-sm text-gray-400 mb-1">
-                        Attestation URI <span className="text-orange-400 text-xs">— strongly recommended</span>
+                        Attestation URI <span className="text-red-400 text-xs font-semibold">★ Required</span>
                       </label>
                       <input value={form.attestationURI}
                         placeholder="https://gist.github.com/you/abc123/raw — hardware specs + contact info"
@@ -431,8 +431,7 @@ export default function ProviderPage() {
                         className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm"/>
                       <p className="text-xs text-gray-500 mt-1">
                         Buyers use this to verify your hardware and request SSH/API access.
-                        Without it, your machine shows as high risk and buyers can&apos;t contact you.
-                        See the guide above.
+                        Registration is blocked without a valid URL — see the guide above.
                       </p>
                     </div>
                     <div className="bg-gray-950 rounded-lg p-4 text-sm flex justify-between">
