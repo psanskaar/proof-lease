@@ -1,19 +1,19 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { usePublicClient } from 'wagmi'
+import { usePublicClient, useAccount } from 'wagmi'
 import { parseAbiItem } from 'viem'
 import { Navbar } from '@/components/Navbar'
 import {
   CheckCircle, XCircle, ExternalLink,
   Loader2, RefreshCw, Brain, Shield, Clock, Cpu,
-  Activity, AlertTriangle,
+  Activity, AlertTriangle, User, Globe,
 } from 'lucide-react'
 import Link from 'next/link'
 
-const ESCROW    = process.env.NEXT_PUBLIC_LEASE_ESCROW    as `0x${string}`
-const REGISTRY  = process.env.NEXT_PUBLIC_ASSET_REGISTRY  as `0x${string}`
-const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL        || ''
-const EXPLORER  = process.env.NEXT_PUBLIC_EXPLORER         || 'https://scan.botchain.ai'
+const ESCROW    = process.env.NEXT_PUBLIC_LEASE_ESCROW   as `0x${string}`
+const REGISTRY  = process.env.NEXT_PUBLIC_ASSET_REGISTRY as `0x${string}`
+const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL      || ''
+const EXPLORER  = process.env.NEXT_PUBLIC_EXPLORER       || 'https://scan.botchain.ai'
 const HEARTBEAT_MAX = 300
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,8 +26,8 @@ type AgentProof = {
   riskScore: number; riskTier: 'LOW' | 'MEDIUM' | 'HIGH'; riskReasons: string[]; riskMode?: string
   repScore?: number; repRate?: number; repTotal?: number
   proofHash: string | null; routerTxHash: string | null; escrowTxHash: string | null
-  settledAt: string; mode: string
-  settlementRationale?: string
+  settledAt: string; mode: string; settlementRationale?: string
+  provider?: string; buyer?: string
 }
 type ChainEvent = {
   leaseId: string; epoch: number; compliant: boolean
@@ -37,21 +37,20 @@ type MergedEntry = Omit<AgentProof, 'proofHash'> &
   Partial<ChainEvent> & { key: string; proofHash: string | null | undefined }
 
 type ActiveLeaseMonitor = {
-  leaseId: number
-  machineId: number
-  buyer: string
-  provider: string
-  hardwareClass: string
-  region: string
-  epochDuration: number
-  totalEpochs: number
-  epochsSettled: number
-  lastHeartbeat: number
+  leaseId: number; machineId: number
+  buyer: string; provider: string
+  hardwareClass: string; region: string
+  epochDuration: number; totalEpochs: number
+  epochsSettled: number; lastHeartbeat: number
 }
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 
-const LEASE_COUNT_ABI = [{ name: 'leaseCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] }] as const
+const LEASE_COUNT_ABI = [{
+  name: 'leaseCount', type: 'function', stateMutability: 'view',
+  inputs: [], outputs: [{ type: 'uint256' }],
+}] as const
+
 const GET_LEASE_ABI = [{
   name: 'getLease', type: 'function', stateMutability: 'view',
   inputs: [{ name: 'leaseId', type: 'uint256' }],
@@ -69,6 +68,7 @@ const GET_LEASE_ABI = [{
     { name: 'aiQuoteHash',   type: 'bytes32' },
   ]}],
 }] as const
+
 const GET_MACHINE_ABI = [{
   name: 'getMachine', type: 'function', stateMutability: 'view',
   inputs: [{ name: 'machineId', type: 'uint256' }],
@@ -98,7 +98,10 @@ function timeAgo(iso: string) {
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
   return `${Math.floor(s / 3600)}h ago`
 }
-function shortHash(h: string) { return `${h.slice(0,10)}…${h.slice(-6)}` }
+function shortHash(h: string) { return `${h.slice(0, 10)}…${h.slice(-6)}` }
+function sameAddr(a?: string, b?: string) {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase()
+}
 
 // ─── ConfidenceBar ────────────────────────────────────────────────────────────
 
@@ -127,7 +130,7 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
   if (leases.length === 0) return null
 
   return (
-    <div className="mb-8">
+    <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"/>
         <span className="text-sm font-medium text-white">Live SLA monitoring</span>
@@ -137,8 +140,8 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
       </div>
       <div className="space-y-3">
         {leases.map(lease => {
-          const staleSecs  = Math.max(0, now - lease.lastHeartbeat)
-          const pct        = Math.min((staleSecs / HEARTBEAT_MAX) * 100, 100)
+          const staleSecs   = Math.max(0, now - lease.lastHeartbeat)
+          const pct         = Math.min((staleSecs / HEARTBEAT_MAX) * 100, 100)
           const isBreaching = staleSecs > HEARTBEAT_MAX
           const isWarning   = staleSecs > HEARTBEAT_MAX * 0.66
           const barColor    = isBreaching ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-green-500'
@@ -150,7 +153,6 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
               isWarning   ? 'bg-yellow-950/20 border-yellow-900/50' :
                             'bg-gray-900/40 border-gray-800'
             }`}>
-              {/* Header row */}
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <div className="flex items-center gap-3">
                   <Activity size={16} className={
@@ -180,8 +182,6 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
                   </span>
                 </div>
               </div>
-
-              {/* Progress bar */}
               <div>
                 <div className="flex justify-between text-xs text-gray-600 mb-1">
                   <span>Heartbeat age</span>
@@ -218,17 +218,15 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
 function SettlementCard({ entry }: { entry: MergedEntry }) {
   const isGroq   = entry.verdictMode === 'groq'
   const isLegacy = !entry.verdictMode && !!entry.groqReasoning
-  const isLocal  = entry.verdictMode === 'local-fallback'
   return (
     <div className={`rounded-xl border p-5 ${
       entry.compliant ? 'bg-green-950/20 border-green-900/50' : 'bg-red-950/20 border-red-900/50'
     }`}>
-      {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           {entry.compliant
             ? <CheckCircle size={20} className="text-green-400 shrink-0"/>
-            : <XCircle    size={20} className="text-red-400 shrink-0"/>}
+            : <XCircle     size={20} className="text-red-400 shrink-0"/>}
           <div>
             <div className="font-semibold text-sm">Lease #{entry.leaseId} · Epoch {entry.epoch}</div>
             <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
@@ -260,7 +258,6 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         <div className="bg-gray-900/60 rounded-lg p-2 text-center">
           <div className="text-xs text-gray-500 mb-0.5">Risk Score</div>
@@ -270,7 +267,7 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
           <div className="text-xs text-gray-500 mb-0.5 flex items-center justify-center gap-1">
             <Clock size={10}/>At-settlement heartbeat
           </div>
-          <div className={`font-bold text-sm ${(entry.staleSecs||0) > HEARTBEAT_MAX ? 'text-red-400' : 'text-green-400'}`}>
+          <div className={`font-bold text-sm ${(entry.staleSecs || 0) > HEARTBEAT_MAX ? 'text-red-400' : 'text-green-400'}`}>
             {entry.staleSecs !== undefined ? `${entry.staleSecs}s stale` : '-'}
           </div>
           <div className="text-xs text-gray-700 mt-0.5">snapshot at epoch close</div>
@@ -297,7 +294,6 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         )}
       </div>
 
-      {/* Settlement rationale */}
       {entry.settlementRationale && (
         <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg p-3 mb-3">
           <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
@@ -307,7 +303,6 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         </div>
       )}
 
-      {/* Groq verdict */}
       {entry.groqReasoning && (
         <div className={`rounded-lg border p-3 mb-3 ${
           isGroq   ? 'bg-purple-950/30 border-purple-900/50' :
@@ -355,7 +350,6 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         </div>
       )}
 
-      {/* Links */}
       <div className="flex flex-wrap gap-3 text-xs">
         {entry.escrowTxHash && (
           <a href={`${EXPLORER}/tx/${entry.escrowTxHash}`} target="_blank" rel="noopener noreferrer"
@@ -383,10 +377,40 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
   )
 }
 
+// ─── EmptyState ───────────────────────────────────────────────────────────────
+
+function EmptyState({ mine }: { mine: boolean }) {
+  return (
+    <div className="text-center py-16 text-gray-500">
+      <Brain size={36} className="mx-auto mb-3 opacity-20"/>
+      {mine ? (
+        <>
+          <p className="text-base mb-1">No activity yet</p>
+          <p className="text-sm">
+            <Link href="/marketplace" className="text-blue-400 hover:underline">Create a lease</Link>
+            {' '}or{' '}
+            <Link href="/provider" className="text-blue-400 hover:underline">register a machine</Link>
+            {' '}to get started.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-base mb-1">No other activity yet</p>
+          <p className="text-sm">Global settlements from other participants will appear here.</p>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+type Tab = 'mine' | 'global'
+
 export default function ActivityPage() {
-  const publicClient = usePublicClient()
+  const publicClient        = usePublicClient()
+  const { address }         = useAccount()
+  const [tab, setTab]       = useState<Tab>('mine')
   const [agentProofs,  setAgentProofs]  = useState<AgentProof[]>([])
   const [chainEvents,  setChainEvents]  = useState<ChainEvent[]>([])
   const [monitors,     setMonitors]     = useState<ActiveLeaseMonitor[]>([])
@@ -398,7 +422,10 @@ export default function ActivityPage() {
   const fetchAgentData = useCallback(async () => {
     if (!AGENT_URL) return
     try {
-      const [pr, hr] = await Promise.all([fetch(`${AGENT_URL}/proofs`), fetch(`${AGENT_URL}/health`)])
+      const [pr, hr] = await Promise.all([
+        fetch(`${AGENT_URL}/proofs`),
+        fetch(`${AGENT_URL}/health`),
+      ])
       if (pr.ok) { const d = await pr.json(); setAgentProofs(d.proofs || []) }
       if (hr.ok) setAgentStatus(await hr.json())
     } catch {}
@@ -426,33 +453,29 @@ export default function ActivityPage() {
       const total = await publicClient.readContract({
         address: ESCROW, abi: LEASE_COUNT_ABI, functionName: 'leaseCount',
       })
-      const count = Number(total)
+      const count  = Number(total)
       const found: ActiveLeaseMonitor[] = []
       for (let id = 1; id <= count; id++) {
         const lease = await publicClient.readContract({
           address: ESCROW, abi: GET_LEASE_ABI, functionName: 'getLease', args: [BigInt(id)],
         }) as any
-        if (lease.status !== 0) continue  // 0 = Active (LeaseStatus enum)
+        if (lease.status !== 0) continue
         const machine = await publicClient.readContract({
           address: REGISTRY, abi: GET_MACHINE_ABI, functionName: 'getMachine', args: [lease.machineId],
         }) as any
         found.push({
-          leaseId:      id,
-          machineId:    Number(lease.machineId),
-          buyer:        lease.buyer,
-          provider:     lease.provider,
+          leaseId: id, machineId: Number(lease.machineId),
+          buyer: lease.buyer, provider: lease.provider,
           hardwareClass: machine.hardwareClass || '',
-          region:        machine.region || '',
+          region: machine.region || '',
           epochDuration: Number(lease.epochDuration),
-          totalEpochs:   Number(lease.totalEpochs),
+          totalEpochs: Number(lease.totalEpochs),
           epochsSettled: Number(lease.epochsSettled),
           lastHeartbeat: Number(machine.lastHeartbeat),
         })
       }
       setMonitors(found)
-    } catch (e) {
-      console.error('fetchActiveLeases:', e)
-    }
+    } catch (e) { console.error('fetchActiveLeases:', e) }
   }, [publicClient])
 
   const refresh = useCallback(async () => {
@@ -463,12 +486,18 @@ export default function ActivityPage() {
 
   useEffect(() => { refresh() }, [publicClient])
   useEffect(() => { const t = setInterval(refresh, 15_000); return () => clearInterval(t) }, [refresh])
-  useEffect(() => { const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000); return () => clearInterval(t) }, [lastRefresh])
+  useEffect(() => {
+    const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000)
+    return () => clearInterval(t)
+  }, [lastRefresh])
 
+  // Merge agent proofs + chain events
   const entries = useMemo<MergedEntry[]>(() => {
     const map = new Map<string, MergedEntry>()
     agentProofs.forEach(p => {
-      map.set(`${p.leaseId}-${p.epoch}`, { ...p, key: `${p.leaseId}-${p.epoch}`, proofHash: p.proofHash ?? undefined })
+      map.set(`${p.leaseId}-${p.epoch}`, {
+        ...p, key: `${p.leaseId}-${p.epoch}`, proofHash: p.proofHash ?? undefined,
+      })
     })
     chainEvents.forEach(e => {
       const key = `${e.leaseId}-${e.epoch}`; const ex = map.get(key)
@@ -477,22 +506,42 @@ export default function ActivityPage() {
     return [...map.values()]
       .filter(e => e.leaseId && e.epoch !== undefined && e.epoch !== null)
       .sort((a, b) => {
-        if (a.settledAt && b.settledAt) return new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime()
+        if (a.settledAt && b.settledAt)
+          return new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime()
         return Number(b.blockNumber || 0) - Number(a.blockNumber || 0)
       })
   }, [agentProofs, chainEvents])
 
-  const groqCount     = entries.filter(e => e.verdictMode === 'groq' || (e.groqReasoning && e.verdictMode === undefined)).length
-  const localCount    = entries.filter(e => e.verdictMode === 'local-fallback').length
+  // Split by wallet
+  const myEntries = useMemo(() =>
+    entries.filter(e => sameAddr(e.provider, address) || sameAddr(e.buyer, address)),
+    [entries, address])
+  const globalEntries = useMemo(() =>
+    entries.filter(e => !sameAddr(e.provider, address) && !sameAddr(e.buyer, address)),
+    [entries, address])
+
+  const myMonitors     = useMemo(() =>
+    monitors.filter(m => sameAddr(m.buyer, address) || sameAddr(m.provider, address)),
+    [monitors, address])
+  const globalMonitors = useMemo(() =>
+    monitors.filter(m => !sameAddr(m.buyer, address) && !sameAddr(m.provider, address)),
+    [monitors, address])
+
+  // Stats (always over full set)
+  const groqCount      = entries.filter(e => e.verdictMode === 'groq' || (e.groqReasoning && !e.verdictMode)).length
   const compliantCount = entries.filter(e => e.compliant).length
-  const avgConf       = entries.length > 0
+  const avgConf        = entries.length > 0
     ? Math.round(entries.reduce((s, e) => s + (e.groqConfidence ?? 75), 0) / entries.length) : null
+
+  const activeList     = tab === 'mine' ? myEntries     : globalEntries
+  const activeMonitors = tab === 'mine' ? myMonitors    : globalMonitors
 
   return (
     <div className="min-h-screen">
       <Navbar/>
       <div className="max-w-3xl mx-auto px-6 py-12">
-        {/* Page header */}
+
+        {/* Header */}
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold mb-1">Agent Activity</h1>
@@ -509,14 +558,14 @@ export default function ActivityPage() {
           </div>
         </div>
 
-        {/* Agent status banner */}
+        {/* Agent status */}
         {agentStatus && (
           <div className={`rounded-xl p-4 border mb-6 text-sm ${
             agentStatus.lastError ? 'bg-red-950/30 border-red-900/50' : 'bg-green-950/30 border-green-900/50'
           }`}>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${agentStatus.lastError ? 'bg-red-400' : 'bg-green-400'} animate-pulse`}/>
+                <div className={`w-2 h-2 rounded-full animate-pulse ${agentStatus.lastError ? 'bg-red-400' : 'bg-green-400'}`}/>
                 <span className="font-medium">Agent {agentStatus.lastError ? 'Error' : 'Online'}</span>
                 <span className="text-gray-500 text-xs font-mono uppercase">{agentStatus.mode}</span>
               </div>
@@ -534,20 +583,17 @@ export default function ActivityPage() {
           </div>
         )}
 
-        {/* ── LIVE MONITORING ── */}
-        <MonitorSection leases={monitors}/>
-
-        {/* Summary stats */}
+        {/* Global stats bar */}
         {entries.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {[
-              { label: 'Total Epochs',  val: entries.length,           color: 'text-white',     bg: 'bg-gray-900 border-gray-800' },
-              { label: 'Compliant',     val: compliantCount,           color: 'text-green-400', bg: 'bg-green-950/30 border-green-900/50' },
-              { label: 'Breaches',      val: entries.length - compliantCount, color: 'text-red-400', bg: 'bg-red-950/30 border-red-900/50' },
+              { label: 'Total Epochs', val: entries.length,                  color: 'text-white',     bg: 'bg-gray-900 border-gray-800' },
+              { label: 'Compliant',    val: compliantCount,                  color: 'text-green-400', bg: 'bg-green-950/30 border-green-900/50' },
+              { label: 'Breaches',     val: entries.length - compliantCount, color: 'text-red-400',   bg: 'bg-red-950/30 border-red-900/50' },
               {
                 label: groqCount > 0
-                  ? `Groq oracle${avgConf !== null ? ' · ' + avgConf + '% avg conf' : ''}`
-                  : localCount > 0 ? 'Local fallback' : 'AI Decisions',
+                  ? `Groq oracle${avgConf !== null ? ' · ' + avgConf + '% conf' : ''}`
+                  : 'AI Decisions',
                 val: groqCount > 0 ? groqCount : entries.length,
                 color: 'text-purple-400', bg: 'bg-purple-950/30 border-purple-900/50',
                 icon: <Brain size={16}/>,
@@ -563,20 +609,47 @@ export default function ActivityPage() {
           </div>
         )}
 
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 bg-gray-900 rounded-xl mb-6 border border-gray-800">
+          {([
+            { key: 'mine',   label: 'Your activity', icon: <User size={14}/>,  count: myEntries.length + myMonitors.length },
+            { key: 'global', label: 'Global feed',   icon: <Globe size={14}/>, count: globalEntries.length + globalMonitors.length },
+          ] as const).map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition ${
+                tab === t.key
+                  ? 'bg-white/10 text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              {t.icon}
+              {t.label}
+              {t.count > 0 && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-mono ${
+                  tab === t.key ? 'bg-white/20 text-white' : 'bg-gray-800 text-gray-500'
+                }`}>
+                  {t.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Live monitoring for active tab */}
+        <MonitorSection leases={activeMonitors}/>
+
         {/* Settlement feed */}
-        {loading && entries.length === 0 ? (
+        {loading && activeList.length === 0 ? (
           <div className="flex items-center justify-center py-24 text-gray-500">
-            <Loader2 size={24} className="animate-spin mr-3"/>Fetching agent data…
+            <Loader2 size={24} className="animate-spin mr-3"/>Fetching data…
           </div>
-        ) : entries.length === 0 ? (
-          <div className="text-center py-24 text-gray-500">
-            <Brain size={44} className="mx-auto mb-4 opacity-30"/>
-            <p className="text-lg mb-1">No settlements yet</p>
-            <p className="text-sm">Go to <Link href="/marketplace" className="text-blue-400 hover:underline">Marketplace</Link> to create a lease.</p>
-          </div>
+        ) : activeList.length === 0 ? (
+          <EmptyState mine={tab === 'mine'}/>
         ) : (
           <div className="space-y-4">
-            {entries.map(entry => <SettlementCard key={entry.key} entry={entry}/>)}
+            {activeList.map(entry => <SettlementCard key={entry.key} entry={entry}/>)}
           </div>
         )}
 
