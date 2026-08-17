@@ -81,30 +81,61 @@ const MARKET_RATES: Record<string, number> = {
   'CPU-64C': 0.3, 'CPU-32C': 0.2, 'CPU-16C': 0.15,
 }
 
+function staleLabel(mins: number) {
+  if (mins <   2) return 'Just now'
+  if (mins <  60) return `${mins}m ago`
+  if (mins < 1440) return `${Math.floor(mins/60)}h ${mins % 60}m ago`
+  return `${Math.floor(mins/1440)}d ${Math.floor((mins % 1440)/60)}h ago`
+}
+
 function computeRisk(machine: Machine, reputationScore: number) {
-  let score = 50
-  const reasons: string[] = []
-  const now = Math.floor(Date.now() / 1000)
+  const now       = Math.floor(Date.now() / 1000)
   const staleMins = Math.max(0, Math.floor((now - Number(machine.lastHeartbeat)) / 60))
   const ageHours  = Math.max(0, Math.floor((now - Number(machine.registeredAt))  / 3600))
+  const isOffline = staleMins > 360
 
-  if (staleMins > 30) { score -= 20; reasons.push('Heartbeat older than 30 min') }
-  else                { reasons.push('Heartbeat is fresh') }
-  if (!machine.attestationURI) { score -= 15; reasons.push('No attestation URI') }
-  else                         { score +=  5 }
-  if (ageHours < 24)       { score -= 10; reasons.push('Registered < 24 h ago') }
-  else if (ageHours > 168) { score += 10; reasons.push('> 7 days on platform') }
+  // Hard block: attestation URI is contract-required since v2.
+  // Machines without it are legacy registrations — they cannot be leased.
+  if (!machine.attestationURI) {
+    return {
+      score: 0, tier: 'HIGH' as const, eligible: false, isOffline,
+      staleLabel: staleLabel(staleMins), staleMins,
+      reasons: ['No attestation URI — legacy machine, cannot be leased'],
+      pricePerEpoch: 0, discount: 35,
+    }
+  }
+
+  let score = 50
+  const reasons: string[] = []
+
+  // Graduated heartbeat penalty — severity scales with time offline
+  if      (staleMins > 1440) { score -= 70; reasons.push('Offline 24h+ — provider unreachable') }
+  else if (staleMins >  720) { score -= 60; reasons.push('Offline 12h+ — likely unreachable') }
+  else if (staleMins >  360) { score -= 50; reasons.push('Offline 6h+ — high risk') }
+  else if (staleMins >  120) { score -= 35; reasons.push('Offline 2h+ — provider not responding') }
+  else if (staleMins >   60) { score -= 25; reasons.push('Offline 1h+ — heartbeat stale') }
+  else if (staleMins >   30) { score -= 15; reasons.push('Heartbeat older than 30 min') }
+  else if (staleMins >    5) { score -=  5; reasons.push('Heartbeat slightly stale') }
+  else if (staleMins >    2) { score +=  5; reasons.push('Heartbeat fresh') }
+  else                       { score += 10; reasons.push('Heartbeat very fresh — active machine') }
+
+  // Age
+  if (ageHours <  24)  { score -= 10; reasons.push('Registered < 24 h ago') }
+  else if (ageHours > 168) { score += 10; reasons.push('7+ days on platform') }
+
+  // Reputation
   if (reputationScore < 400)      { score -= 25; reasons.push('Reputation below 400') }
   else if (reputationScore > 700) { score += 15; reasons.push('Reputation above 700') }
 
   score = Math.max(0, Math.min(100, score))
-  const tier = score >= 80 ? 'LOW' : score >= 50 ? 'MEDIUM' : 'HIGH'
+  const tier       = score >= 80 ? 'LOW' : score >= 50 ? 'MEDIUM' : 'HIGH'
+  const eligible   = score >= 50 && !isOffline
   const marketRate = MARKET_RATES[machine.hardwareClass] ?? 0.3
-  const basePerEpoch = (marketRate * (60 / 3600)) / 0.1
-  const multiplier   = score >= 80 ? 0.85 : score >= 50 ? 0.75 : 0.65
-  const pricePerEpoch = parseFloat((basePerEpoch * multiplier).toFixed(6))
-  const discount = Math.round((1 - multiplier) * 100)
-  return { score, tier, reasons: reasons.slice(0, 3), eligible: score >= 20, pricePerEpoch, discount, staleMins }
+  const basePerEpoch   = (marketRate * (60 / 3600)) / 0.1
+  const multiplier     = score >= 80 ? 0.85 : score >= 50 ? 0.75 : 0.65
+  const pricePerEpoch  = parseFloat((basePerEpoch * multiplier).toFixed(6))
+  const discount       = Math.round((1 - multiplier) * 100)
+  return { score, tier, eligible, isOffline, staleLabel: staleLabel(staleMins), staleMins, reasons: reasons.slice(0, 3), pricePerEpoch, discount }
 }
 
 const TIER_STYLE: Record<string, string> = {
@@ -330,15 +361,22 @@ function MachineCard({ machineId, onLease }: {
           </div>
           <div className="flex items-center gap-1 text-sm text-gray-400"><MapPin size={12}/>{machine.region}</div>
         </div>
-        <span className={`text-xs px-2 py-1 rounded-full font-mono font-bold ${TIER_STYLE[risk.tier]}`}>
-          {risk.tier} RISK
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          {risk.isOffline && (
+            <span className="text-xs px-2 py-1 rounded-full font-mono font-bold bg-gray-800 text-gray-400 border border-gray-700">
+              OFFLINE
+            </span>
+          )}
+          <span className={`text-xs px-2 py-1 rounded-full font-mono font-bold ${TIER_STYLE[risk.tier]}`}>
+            {risk.tier} RISK
+          </span>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {[
           { label: 'AI Risk Score', value: `${risk.score}/100` },
           { label: 'Price/Epoch',   value: `${risk.pricePerEpoch} BOT`, hi: true },
-          { label: 'Heartbeat',     value: `${risk.staleMins}m ago`,
+          { label: 'Heartbeat',     value: risk.staleLabel,
             color: risk.staleMins > 30 ? 'text-red-400' : 'text-green-400' },
           { label: 'Discount',      value: `${risk.discount}% off market` },
         ].map(({ label, value, hi, color }) => (
@@ -371,7 +409,7 @@ function MachineCard({ machineId, onLease }: {
           </button>
         ) : (
           <div className="flex-1 bg-gray-800 py-2 rounded-lg text-sm text-center text-gray-500 cursor-not-allowed">
-            High Risk — Ineligible
+            {risk.isOffline ? 'Machine Offline — Cannot Lease' : 'High Risk — Ineligible'}
           </div>
         )}
         <a href={`${EXPLORER}/address/${machine.provider}`} target="_blank" rel="noopener noreferrer"
