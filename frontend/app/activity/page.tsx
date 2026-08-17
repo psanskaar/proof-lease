@@ -516,16 +516,16 @@ export default function ActivityPage() {
   const myEntries = useMemo(() =>
     entries.filter(e => sameAddr(e.provider, address) || sameAddr(e.buyer, address)),
     [entries, address])
-  const globalEntries = useMemo(() =>
-    entries.filter(e => !sameAddr(e.provider, address) && !sameAddr(e.buyer, address)),
-    [entries, address])
+  // Global feed shows every settlement — including your own.
+  // Previously this excluded entries where you were provider/buyer,
+  // which meant you could never see your own cards in the global tab.
+  const globalEntries = useMemo(() => entries, [entries])
 
   const myMonitors     = useMemo(() =>
     monitors.filter(m => sameAddr(m.buyer, address) || sameAddr(m.provider, address)),
     [monitors, address])
-  const globalMonitors = useMemo(() =>
-    monitors.filter(m => !sameAddr(m.buyer, address) && !sameAddr(m.provider, address)),
-    [monitors, address])
+  // Same fix for active lease monitors.
+  const globalMonitors = useMemo(() => monitors, [monitors])
 
   // Stats (always over full set)
   const groqCount      = entries.filter(e => e.verdictMode === 'groq' || (e.groqReasoning && !e.verdictMode)).length

@@ -326,6 +326,9 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return }
 
   if (req.url === '/' || req.url === '/health') {
+    // Count from disk so the number survives server restarts.
+    // Only count proofs that actually hit the chain (have an escrowTxHash).
+    const settledCount = Object.values(readProofs()).filter(p => p.escrowTxHash).length
     return json(res, 200, {
       status:         state.lastError ? 'error' : 'ok',
       mode:           state.mode,
@@ -334,7 +337,7 @@ const server = http.createServer((req, res) => {
       lastTick:       state.lastTick,
       lastTickStatus: state.lastTickStatus,
       tickCount:      state.tickCount,
-      leasesSettled:  state.leasesSettled,
+      leasesSettled:  settledCount,
       lastError:      state.lastError,
     })
   }
