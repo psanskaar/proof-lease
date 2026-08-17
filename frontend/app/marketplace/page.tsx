@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt,
 } from 'wagmi'
@@ -328,9 +328,10 @@ function MyLeases({ address }: { address: `0x${string}` }) {
   )
 }
 
-function MachineCard({ machineId, onLease }: {
+function MachineCard({ machineId, onLease, onEligible }: {
   machineId: bigint
   onLease: (id: bigint, m: Machine, price: number) => void
+  onEligible?: () => void
 }) {
   const { data: machine } = useReadContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: 'getMachine', args: [machineId],
@@ -343,6 +344,17 @@ function MachineCard({ machineId, onLease }: {
   if (!machine) return <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 animate-pulse h-48"/>
   if (machine.status !== 1) return null
   const risk = computeRisk(machine as Machine, Number(repScore ?? 500))
+
+  const eligible = risk.eligible
+
+  // Tell the parent grid when this card is leasable so it can hide the
+  // "no machines available" fallback. Use an effect — never call parent
+  // setState during the child render phase.
+  useEffect(() => {
+    if (eligible) onEligible?.()
+  }, [eligible, onEligible])
+
+  if (!eligible) return null
 
   return (
     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 flex flex-col gap-4">
@@ -394,17 +406,12 @@ function MachineCard({ machineId, onLease }: {
         </a>
       )}
       <div className="flex gap-2 mt-auto">
-        {risk.eligible ? (
-          <button
-            onClick={() => onLease(machineId, machine as Machine, risk.pricePerEpoch)}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded-lg text-sm font-medium transition">
-            Lease This Machine
-          </button>
-        ) : (
-          <div className="flex-1 bg-gray-800 py-2 rounded-lg text-sm text-center text-gray-500 cursor-not-allowed">
-            {risk.isOffline ? 'Machine Offline: Cannot Lease' : 'High Risk: Ineligible'}
-          </div>
-        )}
+        {/* Cards only reach this point when eligible — no need for a disabled branch */}
+        <button
+          onClick={() => onLease(machineId, machine as Machine, risk.pricePerEpoch)}
+          className="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded-lg text-sm font-medium transition">
+          Lease This Machine
+        </button>
         <a href={`${EXPLORER}/address/${machine.provider}`} target="_blank" rel="noopener noreferrer"
           className="px-3 py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white transition">
           <ExternalLink size={14}/>
@@ -516,6 +523,9 @@ function LeaseModal({ machineId, machine, pricePerEpoch, onClose }: {
 export default function MarketplacePage() {
   const { address, isConnected } = useAccount()
   const [leaseTarget, setLeaseTarget] = useState<{ id: bigint; machine: Machine; pricePerEpoch: number } | null>(null)
+  // Becomes true as soon as any MachineCard confirms it is leasable.
+  const [hasEligible, setHasEligible] = useState(false)
+  const onEligible = useCallback(() => setHasEligible(true), [])
 
   const { data: machineCount } = useReadContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: 'machineCount',
@@ -534,7 +544,7 @@ export default function MarketplacePage() {
           <div>
             <h1 className="text-3xl font-bold mb-1">Compute Marketplace</h1>
             <p className="text-gray-400 text-sm">
-              {count} machine{count !== 1 ? 's' : ''} registered ·{' '}
+              {count} machine{count !== 1 ? 's' : ''} registered · showing leasable only ·{' '}
               <a href={`${EXPLORER}/address/${REGISTRY}`} target="_blank" rel="noopener noreferrer"
                 className="text-blue-400 hover:underline">AssetRegistry ↗</a>
             </p>
@@ -559,12 +569,27 @@ export default function MarketplacePage() {
             <Link href="/provider" className="text-blue-400 hover:underline text-sm">Register your machine →</Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {machineIds.map(id => (
-              <MachineCard key={id.toString()} machineId={id}
-                onLease={(id, m, p) => setLeaseTarget({ id, machine: m, pricePerEpoch: p })}/>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {machineIds.map(id => (
+                <MachineCard key={id.toString()} machineId={id}
+                  onLease={(id, m, p) => setLeaseTarget({ id, machine: m, pricePerEpoch: p })}
+                  onEligible={onEligible}/>
+              ))}
+            </div>
+            {/* Show once all cards have loaded and none were leasable */}
+            {!hasEligible && count > 0 && (
+              <div className="text-center py-24 text-gray-500">
+                <Clock size={48} className="mx-auto mb-4 opacity-30"/>
+                <p className="text-lg mb-2">No machines available right now</p>
+                <p className="text-sm text-gray-600">
+                  {count} machine{count !== 1 ? 's' : ''} registered — all are currently offline or
+                  ineligible. Check back soon or{' '}
+                  <Link href="/provider" className="text-blue-400 hover:underline">register your own</Link>.
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
 
