@@ -341,20 +341,25 @@ function MachineCard({ machineId, onLease, onEligible }: {
     args: machine ? [machine.provider] : undefined,
     query: { enabled: !!machine },
   })
-  if (!machine) return <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 animate-pulse h-48"/>
-  if (machine.status !== 1) return null
-  const risk = computeRisk(machine as Machine, Number(repScore ?? 500))
 
-  const eligible = risk.eligible
+  // Compute risk eagerly — even when machine isn't loaded yet — so that
+  // useEffect can be called unconditionally before any early returns.
+  // (Rules of Hooks: hooks must never appear after a conditional return.)
+  const risk = (machine && machine.status === 1)
+    ? computeRisk(machine as Machine, Number(repScore ?? 500))
+    : null
+  const eligible = !!risk?.eligible
 
   // Tell the parent grid when this card is leasable so it can hide the
-  // "no machines available" fallback. Use an effect — never call parent
-  // setState during the child render phase.
+  // "no machines available" fallback.
   useEffect(() => {
     if (eligible) onEligible?.()
   }, [eligible, onEligible])
 
-  if (!eligible) return null
+  // Guards below are safe now that the hook is already called above.
+  if (!machine) return <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 animate-pulse h-48"/>
+  // risk is null when status !== 1 or not yet computed; !risk.eligible hides offline/high-risk machines.
+  if (!risk || !risk.eligible) return null
 
   return (
     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 flex flex-col gap-4">
