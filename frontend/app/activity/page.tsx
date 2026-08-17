@@ -59,7 +59,7 @@ function ConfidenceBar({ value }: { value: number }) {
 
 function SettlementCard({ entry }: { entry: MergedEntry }) {
   // New entries: verdictMode is 'groq' or 'local-fallback'
-  // Old entries: no verdictMode field — treat groqReasoning as legacy AI decision
+  // Old entries: no verdictMode field, treat groqReasoning as legacy AI decision
   const isGroq    = entry.verdictMode === 'groq'
   const isLegacy  = !entry.verdictMode && !!entry.groqReasoning
   const isLocal   = entry.verdictMode === 'local-fallback'
@@ -76,7 +76,7 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
           <div>
             <div className="font-semibold text-sm">Lease #{entry.leaseId} · Epoch {entry.epoch}</div>
             <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-              <Cpu size={11}/>{entry.hardwareClass || '—'}
+              <Cpu size={11}/>{entry.hardwareClass || ''}
               {entry.region && <><span className="mx-1">·</span>{entry.region}</>}
             </div>
           </div>
@@ -108,14 +108,14 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         <div className="bg-gray-900/60 rounded-lg p-2 text-center">
           <div className="text-xs text-gray-500 mb-0.5">Risk Score</div>
-          <div className="font-bold text-sm">{entry.riskScore ?? '—'}/100</div>
+          <div className="font-bold text-sm">{entry.riskScore ?? '-'}/100</div>
         </div>
         <div className="bg-gray-900/60 rounded-lg p-2 text-center">
           <div className="text-xs text-gray-500 mb-0.5 flex items-center justify-center gap-1">
             <Clock size={10}/>At-settlement heartbeat
           </div>
           <div className={`font-bold text-sm ${(entry.staleSecs||0) > HEARTBEAT_MAX ? 'text-red-400' : 'text-green-400'}`}>
-            {entry.staleSecs !== undefined ? `${entry.staleSecs}s stale` : '—'}
+            {entry.staleSecs !== undefined ? `${entry.staleSecs}s stale` : '-'}
           </div>
           <div className="text-xs text-gray-700 mt-0.5">snapshot at epoch close</div>
         </div>
@@ -136,7 +136,7 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         ) : (
           <div className="bg-gray-900/60 rounded-lg p-2 text-center">
             <div className="text-xs text-gray-500 mb-0.5">Mode</div>
-            <div className="font-bold text-sm font-mono uppercase">{entry.mode || '—'}</div>
+            <div className="font-bold text-sm font-mono uppercase">{entry.mode || '-'}</div>
           </div>
         )}
       </div>

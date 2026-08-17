@@ -95,12 +95,12 @@ function computeRisk(machine: Machine, reputationScore: number) {
   const isOffline = staleMins > 360
 
   // Hard block: attestation URI is contract-required since v2.
-  // Machines without it are legacy registrations — they cannot be leased.
+  // Machines without it are legacy registrations. They cannot be leased.
   if (!machine.attestationURI) {
     return {
       score: 0, tier: 'HIGH' as const, eligible: false, isOffline,
       staleLabel: formatStale(staleMins), staleMins,
-      reasons: ['No attestation URI — legacy machine, cannot be leased'],
+      reasons: ['No attestation URI: legacy machine, cannot be leased'],
       pricePerEpoch: 0, discount: 35,
     }
   }
@@ -108,16 +108,16 @@ function computeRisk(machine: Machine, reputationScore: number) {
   let score = 50
   const reasons: string[] = []
 
-  // Graduated heartbeat penalty — severity scales with time offline
-  if      (staleMins > 1440) { score -= 70; reasons.push('Offline 24h+ — provider unreachable') }
-  else if (staleMins >  720) { score -= 60; reasons.push('Offline 12h+ — likely unreachable') }
-  else if (staleMins >  360) { score -= 50; reasons.push('Offline 6h+ — high risk') }
-  else if (staleMins >  120) { score -= 35; reasons.push('Offline 2h+ — provider not responding') }
-  else if (staleMins >   60) { score -= 25; reasons.push('Offline 1h+ — heartbeat stale') }
+  // Graduated heartbeat penalty: severity scales with time offline
+  if      (staleMins > 1440) { score -= 70; reasons.push('Offline 24h+: provider unreachable') }
+  else if (staleMins >  720) { score -= 60; reasons.push('Offline 12h+: likely unreachable') }
+  else if (staleMins >  360) { score -= 50; reasons.push('Offline 6h+: high risk') }
+  else if (staleMins >  120) { score -= 35; reasons.push('Offline 2h+: provider not responding') }
+  else if (staleMins >   60) { score -= 25; reasons.push('Offline 1h+: heartbeat stale') }
   else if (staleMins >   30) { score -= 15; reasons.push('Heartbeat older than 30 min') }
   else if (staleMins >    5) { score -=  5; reasons.push('Heartbeat slightly stale') }
   else if (staleMins >    2) { score +=  5; reasons.push('Heartbeat fresh') }
-  else                       { score += 10; reasons.push('Heartbeat very fresh — active machine') }
+  else                       { score += 10; reasons.push('Heartbeat very fresh, active machine') }
 
   // Age
   if (ageHours <  24)  { score -= 10; reasons.push('Registered < 24 h ago') }
@@ -152,7 +152,6 @@ const STATUS_COLORS = [
   'bg-red-900/40 text-red-300 border-red-800',
 ]
 
-// ─── Single lease card — shows all statuses ───────────────────────────────────
 function MyLeaseCard({ leaseId }: { leaseId: bigint }) {
   const [copied, setCopied] = useState(false)
   const { data: lease } = useReadContract({
@@ -255,7 +254,7 @@ function MyLeaseCard({ leaseId }: { leaseId: bigint }) {
 
         {machine.attestationURI ? (
           <div className="bg-gray-950 rounded-lg p-3 text-xs">
-            <p className="text-gray-400 mb-1.5">Attestation document — hardware specs + connection info:</p>
+            <p className="text-gray-400 mb-1.5">Attestation document:</p>
             <a href={machine.attestationURI} target="_blank" rel="noopener noreferrer"
               className="text-blue-400 hover:underline flex items-center gap-1">
               <ExternalLink size={11}/>Open attestation ↗
@@ -263,7 +262,7 @@ function MyLeaseCard({ leaseId }: { leaseId: bigint }) {
           </div>
         ) : (
           <div className="bg-gray-950 rounded-lg p-3 text-xs text-gray-500">
-            No attestation document — contact the provider wallet directly for access details.
+            No attestation document. Contact the provider wallet directly for access details.
           </div>
         )}
 
@@ -275,7 +274,7 @@ function MyLeaseCard({ leaseId }: { leaseId: bigint }) {
         )}
       </div>
 
-      {/* Dispute — only for active leases with remaining epochs */}
+      {/* Dispute: only for active leases with remaining epochs */}
       {isActive && epochsRemaining > 0 && (
         <div className="px-5 py-3 border-t border-gray-800 flex justify-end">
           {isSuccess ? (
@@ -297,7 +296,6 @@ function MyLeaseCard({ leaseId }: { leaseId: bigint }) {
   )
 }
 
-// ─── My Leases wrapper — one component per lease ID, returns null if not buyer ─
 function LeaseIfBuyer({ leaseId, address }: { leaseId: bigint; address: string }) {
   const { data: lease } = useReadContract({
     address: ESCROW, abi: ESCROW_ABI, functionName: 'getLease', args: [leaseId],
@@ -315,17 +313,13 @@ function MyLeases({ address }: { address: `0x${string}` }) {
   const ids = useMemo(() => Array.from({ length: count }, (_, i) => BigInt(i + 1)), [count])
   if (count === 0) return null
 
-  // We render all lease IDs; LeaseIfBuyer returns null for non-matching ones.
-  // To avoid showing a header with nothing under it, we track count with a key trick:
-  // just always show the section when leaseCount > 0 — in practice the wallet that
-  // created the leases will always see their own.
   return (
     <div className="mb-10">
       <h2 className="text-xl font-bold mb-1 flex items-center gap-2">
         <Activity size={18} className="text-blue-400"/>My Leases
       </h2>
       <p className="text-gray-400 text-sm mb-4">
-        Your leased machines — active and completed. Contact the provider to get access credentials.
+        Your leased machines, active and completed. Contact the provider to get access credentials.
       </p>
       <div className="space-y-4">
         {ids.map(id => <LeaseIfBuyer key={id.toString()} leaseId={id} address={address}/>)}
@@ -334,7 +328,6 @@ function MyLeases({ address }: { address: `0x${string}` }) {
   )
 }
 
-// ─── Machine Card ─────────────────────────────────────────────────────────────
 function MachineCard({ machineId, onLease }: {
   machineId: bigint
   onLease: (id: bigint, m: Machine, price: number) => void
@@ -391,7 +384,7 @@ function MachineCard({ machineId, onLease }: {
       </ul>
       {!machine.attestationURI && (
         <div className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2 text-xs text-red-300">
-          ⚠ No attestation URI — you will not be able to verify hardware or contact this provider
+          ⚠ No attestation URI. You will not be able to verify hardware or contact this provider
         </div>
       )}
       {machine.attestationURI && (
@@ -409,7 +402,7 @@ function MachineCard({ machineId, onLease }: {
           </button>
         ) : (
           <div className="flex-1 bg-gray-800 py-2 rounded-lg text-sm text-center text-gray-500 cursor-not-allowed">
-            {risk.isOffline ? 'Machine Offline — Cannot Lease' : 'High Risk — Ineligible'}
+            {risk.isOffline ? 'Machine Offline: Cannot Lease' : 'High Risk: Ineligible'}
           </div>
         )}
         <a href={`${EXPLORER}/address/${machine.provider}`} target="_blank" rel="noopener noreferrer"
@@ -421,7 +414,6 @@ function MachineCard({ machineId, onLease }: {
   )
 }
 
-// ─── Lease Modal ──────────────────────────────────────────────────────────────
 function LeaseModal({ machineId, machine, pricePerEpoch, onClose }: {
   machineId: bigint; machine: Machine; pricePerEpoch: number; onClose: () => void
 }) {
@@ -456,7 +448,7 @@ function LeaseModal({ machineId, machine, pricePerEpoch, onClose }: {
               BOT locked in escrow. The AI agent monitors uptime and settles each epoch automatically.
             </p>
             <p className="text-gray-500 text-xs mb-5">
-              Check &quot;My Leases&quot; above — contact the provider to get your SSH / API credentials.
+              Check &quot;My Leases&quot; above and contact the provider to get your SSH / API credentials.
             </p>
             <div className="flex gap-3 justify-center">
               {hash && (
@@ -521,7 +513,6 @@ function LeaseModal({ machineId, machine, pricePerEpoch, onClose }: {
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function MarketplacePage() {
   const { address, isConnected } = useAccount()
   const [leaseTarget, setLeaseTarget] = useState<{ id: bigint; machine: Machine; pricePerEpoch: number } | null>(null)

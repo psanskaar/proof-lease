@@ -57,6 +57,14 @@ function MachineRow({ machineId }: { machineId: bigint }) {
   if (!m) return <div className="py-3 border-b border-gray-800 animate-pulse"><div className="h-3 bg-gray-800 rounded w-1/2"/></div>
   const staleMins = Math.round((Math.floor(Date.now() / 1000) - Number(m.lastHeartbeat)) / 60)
   const isStale   = staleMins > 5
+
+  const effectiveLabel = m.status === 1
+    ? (staleMins > 60 ? 'Offline' : staleMins > 5 ? 'Stale' : 'Active')
+    : (STATUS_LABEL[m.status] ?? 'Unknown')
+  const effectiveColor = m.status === 1
+    ? (staleMins > 60 ? 'text-gray-400' : staleMins > 5 ? 'text-yellow-400' : 'text-green-400')
+    : (STATUS_COLOR[m.status] ?? 'text-gray-400')
+
   return (
     <div className="py-4 border-b border-gray-800 last:border-0">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
@@ -70,10 +78,10 @@ function MachineRow({ machineId }: { machineId: bigint }) {
           </div>
         </div>
         <div className="flex items-center gap-4 text-xs">
-          <span className={STATUS_COLOR[m.status] ?? 'text-gray-400'}>{STATUS_LABEL[m.status] ?? 'Unknown'}</span>
+          <span className={effectiveColor}>{effectiveLabel}</span>
           <span className={isStale ? 'text-red-400 font-medium' : 'text-green-400'}>
             <Clock size={11} className="inline mr-1"/>
-            {isStale ? `⚠ Heartbeat ${staleMins}m stale — send heartbeat now` : `Heartbeat: ${staleMins}m ago`}
+            {isStale ? `⚠ Heartbeat ${staleMins}m stale, send heartbeat now` : `Heartbeat: ${staleMins}m ago`}
           </span>
           <a href={`${EXPLORER}/address/${REGISTRY}`} target="_blank" rel="noopener noreferrer"
             className="text-gray-600 hover:text-gray-300"><ExternalLink size={13}/></a>
@@ -86,7 +94,7 @@ function MachineRow({ machineId }: { machineId: bigint }) {
         </div>
       ) : (
         <div className="ml-11 text-xs text-red-400">
-          ⚠ No attestation URI — buyers cannot verify your hardware or contact you
+          ⚠ No attestation URI. Buyers cannot verify your hardware or contact you
         </div>
       )}
     </div>
@@ -143,7 +151,7 @@ function HeartbeatGuide({ address }: { address: string }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const registryAddr = process.env.NEXT_PUBLIC_ASSET_REGISTRY || '0x0'
-  const script = `// heartbeat.js — run this on your machine as a background process
+  const script = `// heartbeat.js - run this on your machine as a background process
 // Install: npm install ethers dotenv
 // Run:     node heartbeat.js
 require('dotenv').config()
@@ -179,8 +187,8 @@ setInterval(beat, 30_000)     // then every 30 seconds`
         <div className="flex items-center gap-3">
           <Terminal size={18} className="text-blue-400"/>
           <div className="text-left">
-            <div className="font-semibold">Heartbeat Setup — Required for earnings</div>
-            <div className="text-xs text-gray-500 mt-0.5">Run this on your machine or every epoch is a breach</div>
+            <div className="font-semibold">Heartbeat Setup</div>
+            <div className="text-xs text-gray-500 mt-0.5">Required for earnings. Run this on your machine or every epoch is a breach</div>
           </div>
         </div>
         {open ? <ChevronUp size={16} className="text-gray-400"/> : <ChevronDown size={16} className="text-gray-400"/>}
@@ -212,7 +220,7 @@ setInterval(beat, 30_000)     // then every 30 seconds`
               <li>Create <span className="font-mono text-gray-300">.env</span> with{' '}
                 <span className="font-mono text-gray-300">PRIVATE_KEY=0x... MACHINE_ID=1</span></li>
               <li>Run <span className="font-mono text-gray-300">npm install ethers dotenv</span></li>
-              <li>Run <span className="font-mono text-gray-300">node heartbeat.js</span> — use{' '}
+              <li>Run <span className="font-mono text-gray-300">node heartbeat.js</span>, use{' '}
                 <span className="font-mono text-gray-300">pm2</span> or{' '}
                 <span className="font-mono text-gray-300">nohup</span> to keep it running</li>
             </ol>
@@ -235,8 +243,8 @@ function AttestationGuide() {
         <div className="flex items-center gap-3">
           <AlertCircle size={18} className="text-red-400"/>
           <div className="text-left">
-            <div className="font-semibold">Attestation URI — How buyers find and contact you</div>
-            <div className="text-xs text-gray-500 mt-0.5">Required to register — without it buyers have no way to reach you</div>
+            <div className="font-semibold">Attestation URI: How buyers find and contact you</div>
+            <div className="text-xs text-gray-500 mt-0.5">Required to register. Without it, buyers have no way to reach you</div>
           </div>
         </div>
         {open ? <ChevronUp size={16} className="text-gray-400"/> : <ChevronDown size={16} className="text-gray-400"/>}
@@ -251,7 +259,7 @@ function AttestationGuide() {
             <li>Your uptime SLA commitment</li>
           </ul>
           <div className="bg-gray-950 rounded-lg p-4 text-xs space-y-2">
-            <div className="text-gray-400 font-medium">Easiest option — GitHub Gist (free, public):</div>
+            <div className="text-gray-400 font-medium">Easiest option: GitHub Gist (free, public):</div>
             <ol className="text-gray-400 list-decimal list-inside space-y-1">
               <li>Go to <a href="https://gist.github.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">gist.github.com</a></li>
               <li>Create a public gist with your machine specs and contact info</li>
@@ -286,7 +294,7 @@ export default function ProviderPage() {
 
   const handleRegister = () => {
     if (!form.deviceId.trim())       { alert('Enter a Device ID.'); return }
-    if (!form.attestationURI.trim()) { alert('Attestation URI is required — see the guide above.'); return }
+    if (!form.attestationURI.trim()) { alert('Attestation URI is required. See the guide above.'); return }
     try { new URL(form.attestationURI.trim()) }
     catch { alert('Attestation URI must be a valid URL starting with https://'); return }
     const hardwareHash = keccak256(toBytes(form.deviceId.trim() + form.hardwareClass))
@@ -304,7 +312,7 @@ export default function ProviderPage() {
         <h1 className="text-3xl font-bold mb-2">Provider Dashboard</h1>
         <p className="text-gray-400 mb-8 text-sm leading-relaxed">
           Register your compute machine as a verifiable on-chain asset. The AI agent monitors heartbeats
-          and releases payments automatically each epoch — no manual action needed.
+          and releases payments automatically each epoch. No manual action needed.
         </p>
 
         {!isConnected ? (
@@ -343,7 +351,7 @@ export default function ProviderPage() {
                     <CheckCircle size={44} className="text-green-400 mx-auto mb-4"/>
                     <p className="text-green-400 font-semibold mb-2">Machine Registered!</p>
                     <p className="text-gray-500 text-sm mb-4">
-                      Now set up the heartbeat script — without it every epoch will be a breach.
+                      Now set up the heartbeat script. Without it, every epoch will be a breach.
                     </p>
                     {hash && (
                       <a href={`${EXPLORER}/tx/${hash}`} target="_blank" rel="noopener noreferrer"
@@ -380,7 +388,7 @@ export default function ProviderPage() {
                     </div>
                     <div>
                       <label className="block text-sm text-gray-400 mb-1">
-                        Device ID <span className="text-gray-600 text-xs">(generates hardware fingerprint — keep private)</span>
+                        Device ID <span className="text-gray-600 text-xs">(generates hardware fingerprint, keep private)</span>
                       </label>
                       <input value={form.deviceId} placeholder="e.g. server-001-rtx4090"
                         onChange={e => setForm(s => ({ ...s, deviceId: e.target.value }))}
@@ -393,7 +401,7 @@ export default function ProviderPage() {
                       </label>
                       <input
                         value={form.attestationURI}
-                        placeholder="https://gist.github.com/you/abc123/raw — hardware specs + contact info"
+                        placeholder="https://gist.github.com/you/abc123/raw"
                         onChange={e => setForm(s => ({ ...s, attestationURI: e.target.value }))}
                         className={`w-full bg-gray-950 border rounded-lg px-4 py-3 focus:border-blue-500 outline-none text-sm ${
                           form.attestationURI && !isValidUrl(form.attestationURI)
@@ -405,7 +413,7 @@ export default function ProviderPage() {
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Buyers use this to verify your hardware and request SSH/API access.
-                        Registration is blocked without a valid https:// URL — see the guide above.
+                        Registration is blocked without a valid https:// URL. See the guide above.
                       </p>
                     </div>
                     <div className="bg-gray-950 rounded-lg p-4 text-sm flex justify-between">

@@ -26,15 +26,15 @@ const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000
 
 function shortHash(h: string) { return `${h.slice(0,14)}…${h.slice(-8)}` }
 
-// ─── How verification works ───────────────────────────────────────────────────
+// How verification works:
 // ProofRouter.submitProof stores: keccak256(abi.encodePacked(leaseId, epoch, block.timestamp, dataHash, sender))
 // That composite hash cannot be recomputed client-side without knowing the exact block.timestamp.
 //
 // So we do TWO-STEP verification:
-// Step 1 — Data integrity: compute keccak256(rawProofData) locally → compare with agent's stored dataHash
-//          This proves the rawProofData string was NOT altered after the agent submitted it.
-// Step 2 — On-chain existence: ProofRouter.getProof(leaseId, epoch) returns non-zero
-//          This proves the agent DID commit a proof to the blockchain for this epoch.
+// Step 1: Data integrity: compute keccak256(rawProofData) locally, compare with agent's stored dataHash.
+//         This proves the rawProofData string was NOT altered after the agent submitted it.
+// Step 2: On-chain existence: ProofRouter.getProof(leaseId, epoch) returns non-zero.
+//         This proves the agent DID commit a proof to the blockchain for this epoch.
 //
 // Together: the raw evidence is self-consistent AND was committed to chain before the escrow settled.
 
@@ -142,7 +142,7 @@ function VerifyInner() {
           Every epoch settlement stores a keccak256 proof on{' '}
           <a href={`${EXPLORER}/address/${PROOF_ROUTER}`} target="_blank" rel="noopener noreferrer"
             className="text-blue-400 hover:underline">ProofRouter ↗</a>.
-          This page verifies the AI agent used real telemetry — not fabricated data.
+          This page verifies the AI agent used real telemetry, not fabricated data.
         </p>
 
         {/* How it works explainer */}
@@ -152,11 +152,11 @@ function VerifyInner() {
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-400 font-bold shrink-0">①</span>
-            <span><strong className="text-gray-400">Data integrity</strong> — keccak256(rawProofData) matches the hash the agent committed. Proves the evidence string was not altered after submission.</span>
+            <span><strong className="text-gray-400">Data integrity</strong>: keccak256(rawProofData) matches the hash the agent committed. Proves the evidence string was not altered after submission.</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-green-400 font-bold shrink-0">②</span>
-            <span><strong className="text-gray-400">On-chain existence</strong> — ProofRouter has a non-zero entry for this epoch. Proves the agent submitted to the blockchain before the escrow settled.</span>
+            <span><strong className="text-gray-400">On-chain existence</strong>: ProofRouter has a non-zero entry for this epoch. Proves the agent submitted to the blockchain before the escrow settled.</span>
           </div>
         </div>
 
@@ -204,7 +204,7 @@ function VerifyInner() {
                 </span>
                 <span>AI mode:</span>
                 <span className={verdictMode === 'groq' ? 'text-purple-300' : 'text-gray-500'}>
-                  {verdictMode || '—'}
+                  {verdictMode || '-'}
                 </span>
                 {agentEntry.groqReasoning && <>
                   <span>Reasoning:</span>
@@ -212,14 +212,14 @@ function VerifyInner() {
                 </>}
                 <span>Heartbeat at settle:</span>
                 <span className={(agentEntry.staleSecs||0) > 300 ? 'text-red-400' : 'text-green-400'}>
-                  {agentEntry.staleSecs !== undefined ? `${agentEntry.staleSecs}s stale` : '—'}
+                  {agentEntry.staleSecs !== undefined ? `${agentEntry.staleSecs}s stale` : '-'}
                 </span>
                 {agentEntry.repScore !== undefined && <>
                   <span>Reputation:</span>
                   <span>{agentEntry.repScore}/1000 ({agentEntry.repRate}%)</span>
                 </>}
                 <span>Settled:</span>
-                <span>{agentEntry.settledAt ? new Date(agentEntry.settledAt).toLocaleString() : '—'}</span>
+                <span>{agentEntry.settledAt ? new Date(agentEntry.settledAt).toLocaleString() : '-'}</span>
               </div>
             </div>
           )}
@@ -230,7 +230,7 @@ function VerifyInner() {
               <div className="flex items-center gap-2 text-gray-500 mb-2">
                 {chainLoading && <Loader2 size={11} className="animate-spin"/>}
                 <Link2 size={11}/>
-                On-chain — <span className="font-mono">ProofRouter.getProof({leaseId}, {epoch})</span>
+                On-chain: <span className="font-mono">ProofRouter.getProof({leaseId}, {epoch})</span>
               </div>
               {chainLoading ? (
                 <span className="text-gray-600">Reading from BOT Chain…</span>
@@ -291,10 +291,10 @@ function VerifyInner() {
             }`}>
               <div className="flex items-center gap-2 font-bold mb-3">
                 {result.step1 === 'match'
-                  ? <><CheckCircle size={18} className="text-green-400"/>① DATA INTEGRITY — VERIFIED</>
+                  ? <><CheckCircle size={18} className="text-green-400"/>① DATA INTEGRITY: VERIFIED</>
                   : result.step1 === 'mismatch'
-                  ? <><XCircle size={18} className="text-red-400"/>① DATA INTEGRITY — MISMATCH</>
-                  : <><Shield size={18} className="text-blue-400"/>① DATA INTEGRITY — HASH COMPUTED</>
+                  ? <><XCircle size={18} className="text-red-400"/>① DATA INTEGRITY: MISMATCH</>
+                  : <><Shield size={18} className="text-blue-400"/>① DATA INTEGRITY: HASH COMPUTED</>
                 }
               </div>
               <div className="space-y-2 text-xs font-mono">
@@ -324,8 +324,8 @@ function VerifyInner() {
             }`}>
               <div className="flex items-center gap-2 font-bold mb-3">
                 {hasOnChain
-                  ? <><CheckCircle size={18} className="text-green-400"/>② ON-CHAIN PROOF — EXISTS</>
-                  : <><Shield size={18} className="text-gray-400"/>② ON-CHAIN PROOF — NOT FOUND</>
+                  ? <><CheckCircle size={18} className="text-green-400"/>② ON-CHAIN PROOF: EXISTS</>
+                  : <><Shield size={18} className="text-gray-400"/>② ON-CHAIN PROOF: NOT FOUND</>
                 }
               </div>
               {hasOnChain ? (
@@ -336,7 +336,7 @@ function VerifyInner() {
                   <p className="text-xs text-gray-400">
                     ProofRouter has a committed entry for lease {leaseId} epoch {epoch}.
                     This composite hash (including block.timestamp and agent address) was
-                    stored on-chain before the escrow settlement executed — proving the evidence
+                    stored on-chain before the escrow settlement executed, proving the evidence
                     was committed before money moved.
                   </p>
                 </>
@@ -377,7 +377,7 @@ function VerifyInner() {
             <span className="font-mono text-blue-300">ProofRouter.submitProof(leaseId, epoch, dataHash)</span>,
             which creates a composite hash also incorporating the block timestamp and agent wallet address.
             Finally, <span className="font-mono text-blue-300">LeaseEscrow.settleEpoch()</span> runs with
-            the composite hash — so the on-chain settlement is cryptographically linked to the AI decision.
+            the composite hash, so the on-chain settlement is cryptographically linked to the AI decision.
           </p>
         </div>
       </div>

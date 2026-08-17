@@ -28,7 +28,6 @@ const ESCROW_ABI = [
   { name: 'leaseCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const
 
-// ─── Live stats from chain + agent ───────────────────────────────────────────
 function LiveStats() {
   const { data: machineCount } = useReadContract({
     address: REGISTRY, abi: REGISTRY_ABI, functionName: 'machineCount',
@@ -55,35 +54,35 @@ function LiveStats() {
         const compliant = proofs.filter(p => p.compliant).length
         const rate = proofs.length > 0
           ? `${Math.round((compliant / proofs.length) * 100)}%`
-          : '—'
+          : '-'
         const stats = { total: proofs.length, compliant, rate }
         setAgentStats(stats)
         try { sessionStorage.setItem('pl_agent_stats', JSON.stringify(stats)) } catch {}
       })
       .catch(() => {
-        // Agent offline — keep cached values if available, otherwise show N/A
+        // Agent offline: keep cached values if available, otherwise show N/A
         setAgentStats(prev => prev ?? { total: 0, compliant: 0, rate: 'N/A' })
       })
   }, [])
 
   const stats = [
     {
-      value: machineCount !== undefined ? Number(machineCount).toString() : '—',
+      value: machineCount !== undefined ? Number(machineCount).toString() : '-',
       label: 'Machines registered',
       color: 'text-blue-400',
     },
     {
-      value: leaseCount !== undefined ? Number(leaseCount).toString() : '—',
+      value: leaseCount !== undefined ? Number(leaseCount).toString() : '-',
       label: 'Leases created',
       color: 'text-blue-400',
     },
     {
-      value: agentStats ? agentStats.total.toString() : '—',
+      value: agentStats ? agentStats.total.toString() : '-',
       label: 'AI decisions made',
       color: 'text-purple-400',
     },
     {
-      value: agentStats ? agentStats.rate : '—',
+      value: agentStats ? agentStats.rate : '-',
       label: 'Epoch compliance rate',
       color: 'text-green-400',
     },
@@ -95,8 +94,8 @@ function LiveStats() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           {stats.map(({ value, label, color }) => (
             <div key={label} className="text-center">
-              <div className={`text-2xl font-bold font-mono ${color} tabular-nums ${value === '—' ? 'opacity-30' : ''}`}>
-                {value === '—' ? <span className="animate-pulse">—</span> : value}
+              <div className={`text-2xl font-bold font-mono ${color} tabular-nums ${value === '-' ? 'opacity-30' : ''}`}>
+                {value === '-' ? <span className="animate-pulse">-</span> : value}
               </div>
               <div className="text-xs text-gray-500 mt-1">{label}</div>
             </div>
@@ -104,14 +103,13 @@ function LiveStats() {
         </div>
         <div className="flex items-center justify-center gap-1.5 mt-3">
           <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"/>
-          <span className="text-xs text-gray-600">Live — BOT Chain Mainnet · Chain ID 677</span>
+          <span className="text-xs text-gray-600">Live · BOT Chain Mainnet · Chain ID 677</span>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Home() {
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -145,7 +143,7 @@ export default function Home() {
         <p className="text-gray-400 text-lg mb-4 max-w-2xl mx-auto leading-relaxed">
           Providers register GPU and CPU machines on-chain. Buyers escrow BOT tokens.
           A Groq-powered AI agent verifies uptime each epoch and executes payment or refund
-          automatically — no human, no dispute emails, no trust required.
+          automatically. No human, no dispute emails, no trust required.
         </p>
         <p className="text-gray-600 text-sm mb-10">
           Every AI decision is stored as a keccak256 proof hash on BOT Chain. Anyone can verify it.
@@ -199,7 +197,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* AI is core — explicit for judges */}
+        {/* AI decision-maker */}
         <div className="bg-gray-900 rounded-2xl border border-purple-900/40 p-8 mb-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="bg-purple-950/60 rounded-lg p-2"><Brain size={20} className="text-purple-400"/></div>
@@ -238,7 +236,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Verify section — featured prominently */}
+        {/* Verify section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <Link href="/verify"
             className="bg-gray-900 border border-gray-800 hover:border-blue-600 rounded-xl p-6 transition group">
@@ -253,7 +251,7 @@ export default function Home() {
             </div>
             <p className="text-gray-500 text-sm leading-relaxed">
               Every settlement stores a keccak256 proof hash on-chain. Enter any lease ID + epoch
-              to independently recompute the hash and confirm the AI agent used real data — not fabricated telemetry.
+              to independently recompute the hash and confirm the AI agent used real data, not fabricated telemetry.
             </p>
             <div className="mt-3 text-xs font-mono text-gray-700 bg-gray-950 rounded px-3 py-1.5">
               ProofRouter.getProof(leaseId, epoch) → bytes32
@@ -288,10 +286,10 @@ export default function Home() {
             <Lock size={16} className="text-gray-400"/>
           </div>
           <div>
-            <div className="font-medium text-sm mb-1">Escrow is trustless — agent can only release, never steal</div>
+            <div className="font-medium text-sm mb-1">Escrow is trustless: agent can only release, never steal</div>
             <p className="text-gray-500 text-xs leading-relaxed">
               The AI agent wallet is registered as the oracle address. It can only call{' '}
-              <code className="text-blue-300/80">settleEpoch()</code> — which routes funds to either the provider
+              <code className="text-blue-300/80">settleEpoch()</code>, which routes funds to either the provider
               or the buyer based on the proof. It cannot withdraw, transfer, or drain the escrow balance.
               Contract source is on GitHub and verified on-chain.
             </p>
@@ -302,7 +300,7 @@ export default function Home() {
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
           <div className="flex items-center gap-2 mb-4">
             <CheckCircle size={16} className="text-green-400" />
-            <h3 className="font-semibold">Deployed Contracts — BOT Chain Mainnet</h3>
+            <h3 className="font-semibold">Deployed Contracts: BOT Chain Mainnet</h3>
             <span className="ml-auto text-xs text-gray-600 font-mono">Chain ID 677</span>
           </div>
           <div className="space-y-2 font-mono text-sm">

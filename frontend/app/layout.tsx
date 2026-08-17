@@ -6,7 +6,7 @@ import { Providers } from './providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'ProofLease — Verifiable Compute on BOT Chain',
+  title: 'ProofLease: Verifiable Compute on BOT Chain',
   description: 'Rent GPU and CPU compute with AI-verified SLA settlement on BOT Chain.',
 }
 
