@@ -21,8 +21,9 @@ export function Navbar() {
       <div className="flex-1 flex items-center gap-2 min-w-0">
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <span className="text-xl font-bold text-blue-400">ProofLease</span>
-          <span className="hidden lg:inline-flex items-center gap-1 text-xs bg-green-900/60 text-green-300 border border-green-800 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
-            LIVE · BOT Mainnet
+          <span className="hidden lg:inline-flex flex-col items-center text-xs bg-green-900/60 text-green-300 border border-green-800 px-2 py-0.5 rounded-md font-mono leading-tight text-center shrink-0">
+            <span>LIVE · BOT</span>
+            <span>Mainnet</span>
           </span>
         </Link>
       </div>
