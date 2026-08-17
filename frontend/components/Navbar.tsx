@@ -14,22 +14,29 @@ export function Navbar() {
   const pathname = usePathname()
 
   return (
-    <nav className="border-b border-gray-800 px-6 py-4 flex justify-between items-center sticky top-0 bg-gray-950/90 backdrop-blur z-40">
-      <Link href="/" className="flex items-center gap-3 shrink-0">
-        <span className="text-xl font-bold text-blue-400">ProofLease</span>
-        <span className="hidden sm:inline text-xs bg-green-900/60 text-green-300 border border-green-800 px-2 py-0.5 rounded-full font-mono">
-          LIVE · Mainnet
-        </span>
-      </Link>
+    <nav className="border-b border-gray-800 px-4 sm:px-6 py-3 flex items-center gap-2 sticky top-0 bg-gray-950/90 backdrop-blur z-40">
 
-      <div className="flex items-center gap-1 sm:gap-2 mx-4">
+      {/* ── Left: brand ─────────────────────────────────────────────────────── */}
+      {/* flex-1 so it takes equal space as the right side, keeping nav centred */}
+      <div className="flex-1 flex items-center gap-2 min-w-0">
+        <Link href="/" className="flex items-center gap-2 shrink-0">
+          <span className="text-xl font-bold text-blue-400">ProofLease</span>
+          <span className="hidden lg:inline-flex items-center gap-1 text-xs bg-green-900/60 text-green-300 border border-green-800 px-2 py-0.5 rounded-full font-mono whitespace-nowrap">
+            LIVE · BOT Mainnet
+          </span>
+        </Link>
+      </div>
+
+      {/* ── Centre: nav links ────────────────────────────────────────────────── */}
+      {/* hidden on mobile; each link gets whitespace-nowrap so it never breaks */}
+      <div className="hidden md:flex items-center gap-0.5 shrink-0">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
             <Link
               key={href}
               href={href}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
                 active
                   ? 'bg-gray-800 text-white font-medium'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
@@ -41,9 +48,12 @@ export function Navbar() {
         })}
       </div>
 
-      <div className="shrink-0">
+      {/* ── Right: wallet ────────────────────────────────────────────────────── */}
+      {/* flex-1 + justify-end mirrors the left side so the centre stays centred */}
+      <div className="flex-1 flex items-center justify-end shrink-0">
         <ConnectButton />
       </div>
+
     </nav>
   )
 }
