@@ -18,16 +18,33 @@ Built for **BOT Chain Builder Challenge #2** - AI × RWA track.
 
 Contract addresses are identical on testnet and mainnet - same deployer wallet and nonce sequence produces deterministic EVM addresses.
 
-### Verified Transactions (Testnet - full lifecycle)
+### Verified Transactions (Mainnet — full lifecycle)
+
+| Action | TX |
+|---|---|
+| Machine registered | [0x229951...f420](https://scan.botchain.ai/tx/0x229951e8d4a3482cd6c1862091c99df36116aa501762c674413bab91cf42f420) |
+| Lease created (0.005 BOT escrowed) | [0x472984...8b5b](https://scan.botchain.ai/tx/0x472984545f3769fbd1214ae74fcc57cb3e44f6a8f48b3d2b2cb781da62b88b5b) |
+| Proof submitted to ProofRouter (epoch 0) | [0x981b4c...b77e](https://scan.botchain.ai/tx/0x981b4c92c22c9a0138b0b68bc993a5a0ffd1738903e80ce442650a81087ab77e) |
+| Epoch 0 settled — compliant | [0x314a3a...34f9](https://scan.botchain.ai/tx/0x314a3ae5f8c7bc27bda3f25af22d9fbdb01b89a0aa3d5a34225025e05fa934f9) |
+| Proof submitted to ProofRouter (epoch 1) | [0x49ea21...e04d](https://scan.botchain.ai/tx/0x49ea21df8ec41a877b63ad1c72b13a6860b9ee8b1a0a8008264ee2c4c5a3e04d) |
+| Epoch 1 settled — breach | [0xb8f019...d73a](https://scan.botchain.ai/tx/0xb8f01930218e5629f5e90e09fcc560a91a6d11a681ba59602073cadb9879d73a) |
+| Provider withdrawal | [0x3d7c68...0f23](https://scan.botchain.ai/tx/0x3d7c6821b91c86116ae2ee5485acbbb3653660318a2f1732f5d219a98ba20f23) |
+
+Machine ID: 4  |  Lease ID: 5  |  Deployer: [0x72CD...3945](https://scan.botchain.ai/address/0x72CD637431ea7cE9374CAdeb4F036ae14a6f3945)
+
+<details>
+<summary>Testnet (Bohr) — same lifecycle, run prior to mainnet</summary>
 
 | Action | TX |
 |---|---|
 | Machine registered | [0xf89c...fcd](https://scan.bohr.life/tx/0xf89c9c8598f5bed215ff2d766ef3a588cd53219b79766e66cdd6b9441ba25fcd) |
 | Lease created (0.005 BOT escrowed) | [0x5a75...07](https://scan.bohr.life/tx/0x5a75a7aa1781280c73cd6d85c0a578153d5786d4385d42df9bd0de32f9549e07) |
 | Proof submitted to ProofRouter | [0x2e38...f3](https://scan.bohr.life/tx/0x2e3874621bde322c70338f1d3a4716a049cd12ec9aac3bcda7c11a60c78c03f3) |
-| Epoch 0 settled - compliant | [0x5f92...12](https://scan.bohr.life/tx/0x5f923d0d5db6341c4d7310b5458969b073c0543b7a83ce86aedc827a89788f12) |
-| Epoch 1 settled - breach | [0x8b7d...72](https://scan.bohr.life/tx/0x8b7deb06f5ded89fb27afcfa577cb3e3e56d57f33fcc3c4bc7f9e1d2e57ef272) |
+| Epoch 0 settled — compliant | [0x5f92...12](https://scan.bohr.life/tx/0x5f923d0d5db6341c4d7310b5458969b073c0543b7a83ce86aedc827a89788f12) |
+| Epoch 1 settled — breach | [0x8b7d...72](https://scan.bohr.life/tx/0x8b7deb06f5ded89fb27afcfa577cb3e3e56d57f33fcc3c4bc7f9e1d2e57ef272) |
 | Provider withdrawal | [0xc9e7...a6](https://scan.bohr.life/tx/0xc9e7242cabd84c70804dd26cb6fa911ff285ab65033da8aebbcb4d7e761979a6) |
+
+</details>
 
 ---
 
