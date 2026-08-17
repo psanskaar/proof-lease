@@ -23,6 +23,7 @@ type AgentProof = {
   repScore?: number; repRate?: number; repTotal?: number
   proofHash: string | null; routerTxHash: string | null; escrowTxHash: string | null
   settledAt: string; mode: string
+  settlementRationale?: string
 }
 type ChainEvent = {
   leaseId: string; epoch: number; compliant: boolean
@@ -140,6 +141,16 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
           </div>
         )}
       </div>
+
+      {/* Settlement rationale */}
+      {entry.settlementRationale && (
+        <div className="bg-gray-900/40 border border-gray-700/50 rounded-lg p-3 mb-3">
+          <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+            <Brain size={10}/> Settlement rationale
+          </div>
+          <p className="text-xs text-gray-300 leading-relaxed">{entry.settlementRationale}</p>
+        </div>
+      )}
 
       {/* Groq verdict */}
       {entry.groqReasoning && (
@@ -270,10 +281,12 @@ export default function ActivityPage() {
       const key = `${e.leaseId}-${e.epoch}`; const ex = map.get(key)
       if (ex) map.set(key, { ...ex, ...e })
     })
-    return [...map.values()].sort((a,b) => {
-      if (a.settledAt && b.settledAt) return new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime()
-      return Number(b.blockNumber||0) - Number(a.blockNumber||0)
-    })
+    return [...map.values()]
+      .filter(e => e.leaseId && e.epoch !== undefined && e.epoch !== null)
+      .sort((a,b) => {
+        if (a.settledAt && b.settledAt) return new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime()
+        return Number(b.blockNumber||0) - Number(a.blockNumber||0)
+      })
   }, [agentProofs, chainEvents])
 
   // verdictMode='groq' = confirmed Groq call (new agent)

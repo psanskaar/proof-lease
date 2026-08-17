@@ -270,6 +270,28 @@ async function tick() {
       mode:          state.mode,
     })
 
+    // 7. Generate plain-language settlement rationale
+    let settlementRationale = verdict.compliant
+      ? `Epoch ${epoch} compliant: heartbeat was ${staleSecs}s old, within the ${HEARTBEAT_MAX}s SLA threshold.`
+      : `Epoch ${epoch} breached: heartbeat was ${staleSecs}s old, exceeding the ${HEARTBEAT_MAX}s SLA limit. Full refund issued to buyer.`
+
+    if (process.env.GROQ_API_KEY) {
+      try {
+        const groq = new (require('groq-sdk'))({ apiKey: process.env.GROQ_API_KEY })
+        const r = await groq.chat.completions.create({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content:
+            `Lease ${leaseId}, Epoch ${epoch}: heartbeat was ${staleSecs}s old (limit ${HEARTBEAT_MAX}s), risk score ${riskResult.score}/100, verdict ${verdict.compliant ? 'COMPLIANT' : 'BREACH'}. Write one plain-English sentence explaining this settlement decision to a non-technical buyer.`
+          }],
+          max_tokens: 80,
+          temperature: 0.2,
+        })
+        settlementRationale = r.choices[0]?.message?.content?.trim() || settlementRationale
+      } catch {}
+    }
+
+    writeProof(leaseId, epoch, { settlementRationale })
+
     if (result.escrowTxHash) {
       console.log(`  ✅ ${EXPLORER}/tx/${result.escrowTxHash}`)
       state.leasesSettled++

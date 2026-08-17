@@ -82,8 +82,8 @@ function LiveStats() {
       color: 'text-purple-400',
     },
     {
-      value: agentStats ? agentStats.rate : '-',
-      label: 'Epoch compliance rate',
+      value: agentStats ? agentStats.compliant.toString() : '-',
+      label: 'Compliant epochs',
       color: 'text-green-400',
     },
   ]
