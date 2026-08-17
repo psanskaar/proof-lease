@@ -81,7 +81,7 @@ const MARKET_RATES: Record<string, number> = {
   'CPU-64C': 0.3, 'CPU-32C': 0.2, 'CPU-16C': 0.15,
 }
 
-function staleLabel(mins: number) {
+function formatStale(mins: number) {
   if (mins <   2) return 'Just now'
   if (mins <  60) return `${mins}m ago`
   if (mins < 1440) return `${Math.floor(mins/60)}h ${mins % 60}m ago`
@@ -99,7 +99,7 @@ function computeRisk(machine: Machine, reputationScore: number) {
   if (!machine.attestationURI) {
     return {
       score: 0, tier: 'HIGH' as const, eligible: false, isOffline,
-      staleLabel: staleLabel(staleMins), staleMins,
+      staleLabel: formatStale(staleMins), staleMins,
       reasons: ['No attestation URI — legacy machine, cannot be leased'],
       pricePerEpoch: 0, discount: 35,
     }
@@ -135,7 +135,7 @@ function computeRisk(machine: Machine, reputationScore: number) {
   const multiplier     = score >= 80 ? 0.85 : score >= 50 ? 0.75 : 0.65
   const pricePerEpoch  = parseFloat((basePerEpoch * multiplier).toFixed(6))
   const discount       = Math.round((1 - multiplier) * 100)
-  return { score, tier, eligible, isOffline, staleLabel: staleLabel(staleMins), staleMins, reasons: reasons.slice(0, 3), pricePerEpoch, discount }
+  return { score, tier, eligible, isOffline, staleLabel: formatStale(staleMins), staleMins, reasons: reasons.slice(0, 3), pricePerEpoch, discount }
 }
 
 const TIER_STYLE: Record<string, string> = {

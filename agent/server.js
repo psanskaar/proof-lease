@@ -61,10 +61,12 @@ async function getMachine(machineId) {
 }
 
 async function getProviderReputation(providerAddress) {
-  if (!process.env.REPUTATION_CONTRACT) return { score: 500, rate: 100, total: 0 }
+  // Accept either REPUTATION_CONTRACT (agent .env) or NEXT_PUBLIC_REPUTATION (shared with frontend)
+  const repAddr = process.env.REPUTATION_CONTRACT || process.env.NEXT_PUBLIC_REPUTATION
+  if (!repAddr) return { score: 500, rate: 100, total: 0 }
   try {
     const provider = new ethers.JsonRpcProvider(RPC_URL)
-    const rep = new ethers.Contract(process.env.REPUTATION_CONTRACT, REPUTATION_ABI, provider)
+    const rep = new ethers.Contract(repAddr, REPUTATION_ABI, provider)
     const [score, rate, total] = await Promise.all([
       rep.getScore(providerAddress),
       rep.getFulfillmentRate(providerAddress),
@@ -342,6 +344,8 @@ server.listen(PORT, () => {
   console.log(`   RPC:    ${RPC_URL}`)
   console.log(`   Poll:   every ${POLL_MS / 1000}s`)
   console.log(`   Groq:   ${process.env.GROQ_API_KEY ? 'enabled ✓' : 'missing — local fallback active'}`)
+  const repAddr = process.env.REPUTATION_CONTRACT || process.env.NEXT_PUBLIC_REPUTATION
+  console.log(`   Rep:    ${repAddr ? repAddr.slice(0,10)+'… ✓' : 'missing REPUTATION_CONTRACT — using score 500 default'}`)
   console.log('─'.repeat(50))
   tick()
   setInterval(tick, POLL_MS)

@@ -42,17 +42,28 @@ function LiveStats() {
 
   useEffect(() => {
     if (!AGENT_URL) return
+    // Show cached values instantly while fetching
+    try {
+      const cached = sessionStorage.getItem('pl_agent_stats')
+      if (cached) setAgentStats(JSON.parse(cached))
+    } catch {}
+
     fetch(`${AGENT_URL}/proofs`)
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => {
         const proofs: any[] = d.proofs || []
         const compliant = proofs.filter(p => p.compliant).length
         const rate = proofs.length > 0
           ? `${Math.round((compliant / proofs.length) * 100)}%`
           : '—'
-        setAgentStats({ total: proofs.length, compliant, rate })
+        const stats = { total: proofs.length, compliant, rate }
+        setAgentStats(stats)
+        try { sessionStorage.setItem('pl_agent_stats', JSON.stringify(stats)) } catch {}
       })
-      .catch(() => {})
+      .catch(() => {
+        // Agent offline — keep cached values if available, otherwise show N/A
+        setAgentStats(prev => prev ?? { total: 0, compliant: 0, rate: 'N/A' })
+      })
   }, [])
 
   const stats = [
@@ -84,8 +95,8 @@ function LiveStats() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           {stats.map(({ value, label, color }) => (
             <div key={label} className="text-center">
-              <div className={`text-2xl font-bold font-mono ${color} tabular-nums`}>
-                {value}
+              <div className={`text-2xl font-bold font-mono ${color} tabular-nums ${value === '—' ? 'opacity-30' : ''}`}>
+                {value === '—' ? <span className="animate-pulse">—</span> : value}
               </div>
               <div className="text-xs text-gray-500 mt-1">{label}</div>
             </div>

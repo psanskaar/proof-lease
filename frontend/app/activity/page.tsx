@@ -58,7 +58,11 @@ function ConfidenceBar({ value }: { value: number }) {
 }
 
 function SettlementCard({ entry }: { entry: MergedEntry }) {
-  const isGroq = entry.verdictMode === 'groq'
+  // New entries: verdictMode is 'groq' or 'local-fallback'
+  // Old entries: no verdictMode field — treat groqReasoning as legacy AI decision
+  const isGroq    = entry.verdictMode === 'groq'
+  const isLegacy  = !entry.verdictMode && !!entry.groqReasoning
+  const isLocal   = entry.verdictMode === 'local-fallback'
   return (
     <div className={`rounded-xl border p-5 ${
       entry.compliant ? 'bg-green-950/20 border-green-900/50' : 'bg-red-950/20 border-red-900/50'
@@ -79,11 +83,12 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <span className={`text-xs px-2 py-0.5 rounded-full border font-mono flex items-center gap-1 ${
-            isGroq
-              ? 'bg-purple-950/60 text-purple-300 border-purple-900'
-              : 'bg-gray-900 text-gray-500 border-gray-700'
+            isGroq   ? 'bg-purple-950/60 text-purple-300 border-purple-900' :
+            isLegacy ? 'bg-blue-950/50 text-blue-400 border-blue-900' :
+                       'bg-gray-900 text-gray-500 border-gray-700'
           }`}>
-            <Brain size={10}/>{isGroq ? 'Groq oracle' : 'local fallback'}
+            <Brain size={10}/>
+            {isGroq ? 'Groq oracle' : isLegacy ? 'AI settled' : 'local fallback'}
           </span>
           {entry.riskTier && (
             <span className={`text-xs px-2 py-0.5 rounded-full border font-mono font-bold ${TIER_STYLE[entry.riskTier]}`}>
@@ -139,14 +144,16 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
       {/* Groq verdict */}
       {entry.groqReasoning && (
         <div className={`rounded-lg border p-3 mb-3 ${
-          isGroq ? 'bg-purple-950/30 border-purple-900/50' : 'bg-gray-900/80 border-gray-700/60'
+          isGroq   ? 'bg-purple-950/30 border-purple-900/50' :
+          isLegacy ? 'bg-blue-950/20 border-blue-900/40' :
+                     'bg-gray-900/80 border-gray-700/60'
         }`}>
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <div className={`flex items-center gap-2 text-xs font-medium ${
-              isGroq ? 'text-purple-300' : 'text-gray-500'
+              isGroq ? 'text-purple-300' : isLegacy ? 'text-blue-400' : 'text-gray-500'
             }`}>
               <Brain size={13}/>
-              {isGroq ? 'Groq AI Verdict' : 'Local Rule Verdict'}
+              {isGroq ? 'Groq AI Verdict' : isLegacy ? 'AI Decision (pre-Groq)' : 'Local Rule Verdict'}
             </div>
             {entry.groqConfidence !== undefined && (
               <div className="flex items-center gap-2 min-w-[130px]">
@@ -160,9 +167,9 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
             <div className="flex flex-wrap gap-1 mb-2">
               {entry.groqFactors.map(f => (
                 <span key={f} className={`text-xs px-2 py-0.5 rounded-full border ${
-                  isGroq
-                    ? 'bg-purple-950/40 border-purple-900/40 text-purple-300'
-                    : 'bg-gray-800 border-gray-700 text-gray-400'
+                  isGroq   ? 'bg-purple-950/40 border-purple-900/40 text-purple-300' :
+                  isLegacy ? 'bg-blue-950/40 border-blue-900/40 text-blue-300' :
+                             'bg-gray-800 border-gray-700 text-gray-400'
                 }`}>
                   {f.replace(/_/g, ' ')}
                 </span>
@@ -269,7 +276,12 @@ export default function ActivityPage() {
     })
   }, [agentProofs, chainEvents])
 
-  const groqCount      = entries.filter(e => e.verdictMode === 'groq').length
+  // verdictMode='groq' = confirmed Groq call (new agent)
+  // groqReasoning present without verdictMode = legacy entry (still AI-settled, just pre-versioning)
+  const groqCount = entries.filter(e =>
+    e.verdictMode === 'groq' || (e.groqReasoning && e.verdictMode === undefined)
+  ).length
+  const localCount = entries.filter(e => e.verdictMode === 'local-fallback').length
   const compliantCount = entries.filter(e => e.compliant).length
   const avgConf        = entries.length > 0
     ? Math.round(entries.reduce((s,e)=>s+(e.groqConfidence??75),0)/entries.length) : null
@@ -321,12 +333,15 @@ export default function ActivityPage() {
         {entries.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {[
-              { label:'Total Epochs',   val: entries.length,   color:'text-white',       bg:'bg-gray-900 border-gray-800' },
-              { label:'Compliant',      val: compliantCount,   color:'text-green-400',   bg:'bg-green-950/30 border-green-900/50' },
+              { label:'Total Epochs',   val: entries.length,   color:'text-white',     bg:'bg-gray-900 border-gray-800' },
+              { label:'Compliant',      val: compliantCount,   color:'text-green-400', bg:'bg-green-950/30 border-green-900/50' },
               { label:'Breaches',       val: entries.length-compliantCount, color:'text-red-400', bg:'bg-red-950/30 border-red-900/50' },
               {
-                label: `Groq verdicts${avgConf!==null?' · avg '+avgConf+'%':''}`,
-                val: groqCount, color:'text-purple-400', bg:'bg-purple-950/30 border-purple-900/50',
+                label: groqCount > 0
+                  ? `Groq oracle${avgConf!==null?' · '+avgConf+'% avg conf':''}`
+                  : localCount > 0 ? 'Local fallback' : 'AI Decisions',
+                val: groqCount > 0 ? groqCount : entries.length,
+                color:'text-purple-400', bg:'bg-purple-950/30 border-purple-900/50',
                 icon: <Brain size={16}/>,
               },
             ].map(({ label, val, color, bg, icon }) => (
