@@ -6,13 +6,17 @@ import { Navbar } from '@/components/Navbar'
 import {
   CheckCircle, XCircle, ExternalLink,
   Loader2, RefreshCw, Brain, Shield, Clock, Cpu,
+  Activity, AlertTriangle,
 } from 'lucide-react'
 import Link from 'next/link'
 
-const ESCROW    = process.env.NEXT_PUBLIC_LEASE_ESCROW as `0x${string}`
-const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL   || ''
-const EXPLORER  = process.env.NEXT_PUBLIC_EXPLORER    || 'https://scan.botchain.ai'
+const ESCROW    = process.env.NEXT_PUBLIC_LEASE_ESCROW    as `0x${string}`
+const REGISTRY  = process.env.NEXT_PUBLIC_ASSET_REGISTRY  as `0x${string}`
+const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL        || ''
+const EXPLORER  = process.env.NEXT_PUBLIC_EXPLORER         || 'https://scan.botchain.ai'
 const HEARTBEAT_MAX = 300
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type AgentProof = {
   leaseId: string; epoch: number; machineId: number
@@ -32,6 +36,56 @@ type ChainEvent = {
 type MergedEntry = Omit<AgentProof, 'proofHash'> &
   Partial<ChainEvent> & { key: string; proofHash: string | null | undefined }
 
+type ActiveLeaseMonitor = {
+  leaseId: number
+  machineId: number
+  buyer: string
+  provider: string
+  hardwareClass: string
+  region: string
+  epochDuration: number
+  totalEpochs: number
+  epochsSettled: number
+  lastHeartbeat: number
+}
+
+// ─── ABIs ─────────────────────────────────────────────────────────────────────
+
+const LEASE_COUNT_ABI = [{ name: 'leaseCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] }] as const
+const GET_LEASE_ABI = [{
+  name: 'getLease', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'leaseId', type: 'uint256' }],
+  outputs: [{ type: 'tuple', components: [
+    { name: 'machineId',     type: 'uint256' },
+    { name: 'provider',      type: 'address' },
+    { name: 'buyer',         type: 'address' },
+    { name: 'pricePerEpoch', type: 'uint256' },
+    { name: 'epochDuration', type: 'uint256' },
+    { name: 'totalEpochs',   type: 'uint256' },
+    { name: 'epochsSettled', type: 'uint256' },
+    { name: 'escrowBalance', type: 'uint256' },
+    { name: 'startTime',     type: 'uint256' },
+    { name: 'status',        type: 'uint8'   },
+    { name: 'aiQuoteHash',   type: 'bytes32' },
+  ]}],
+}] as const
+const GET_MACHINE_ABI = [{
+  name: 'getMachine', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'machineId', type: 'uint256' }],
+  outputs: [{ type: 'tuple', components: [
+    { name: 'provider',       type: 'address' },
+    { name: 'hardwareHash',   type: 'bytes32' },
+    { name: 'region',         type: 'string'  },
+    { name: 'hardwareClass',  type: 'string'  },
+    { name: 'attestationURI', type: 'string'  },
+    { name: 'registeredAt',   type: 'uint256' },
+    { name: 'lastHeartbeat',  type: 'uint256' },
+    { name: 'status',         type: 'uint8'   },
+  ]}],
+}] as const
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 const TIER_STYLE = {
   LOW:    'bg-green-900/40 text-green-300 border-green-800',
   MEDIUM: 'bg-yellow-900/40 text-yellow-300 border-yellow-800',
@@ -46,6 +100,8 @@ function timeAgo(iso: string) {
 }
 function shortHash(h: string) { return `${h.slice(0,10)}…${h.slice(-6)}` }
 
+// ─── ConfidenceBar ────────────────────────────────────────────────────────────
+
 function ConfidenceBar({ value }: { value: number }) {
   const color = value >= 80 ? 'bg-green-500' : value >= 60 ? 'bg-yellow-500' : 'bg-red-500'
   return (
@@ -58,12 +114,111 @@ function ConfidenceBar({ value }: { value: number }) {
   )
 }
 
+// ─── MonitorSection ───────────────────────────────────────────────────────────
+
+function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
+  const [now, setNow] = useState(Math.floor(Date.now() / 1000))
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  if (leases.length === 0) return null
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"/>
+        <span className="text-sm font-medium text-white">Live SLA monitoring</span>
+        <span className="text-xs text-gray-500">
+          · {leases.length} active lease{leases.length > 1 ? 's' : ''}
+        </span>
+      </div>
+      <div className="space-y-3">
+        {leases.map(lease => {
+          const staleSecs  = Math.max(0, now - lease.lastHeartbeat)
+          const pct        = Math.min((staleSecs / HEARTBEAT_MAX) * 100, 100)
+          const isBreaching = staleSecs > HEARTBEAT_MAX
+          const isWarning   = staleSecs > HEARTBEAT_MAX * 0.66
+          const barColor    = isBreaching ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-green-500'
+          const nextEpoch   = lease.epochsSettled + 1
+
+          return (
+            <div key={lease.leaseId} className={`rounded-xl border p-4 ${
+              isBreaching ? 'bg-red-950/20 border-red-900/50' :
+              isWarning   ? 'bg-yellow-950/20 border-yellow-900/50' :
+                            'bg-gray-900/40 border-gray-800'
+            }`}>
+              {/* Header row */}
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <Activity size={16} className={
+                    isBreaching ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-green-400'
+                  }/>
+                  <div>
+                    <div className="text-sm font-semibold">
+                      Lease #{lease.leaseId} · Epoch {nextEpoch}/{lease.totalEpochs}
+                    </div>
+                    <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                      <Cpu size={10}/>
+                      {lease.hardwareClass || `Machine #${lease.machineId}`}
+                      {lease.region && <><span className="mx-1">·</span>{lease.region}</>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isBreaching && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 flex items-center gap-1">
+                      <AlertTriangle size={10}/>BREACH WINDOW
+                    </span>
+                  )}
+                  <span className={`text-sm font-mono font-bold tabular-nums ${
+                    isBreaching ? 'text-red-400' : isWarning ? 'text-yellow-400' : 'text-green-400'
+                  }`}>
+                    {staleSecs}s stale
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div>
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span>Heartbeat age</span>
+                  <span>{HEARTBEAT_MAX}s SLA threshold</span>
+                </div>
+                <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-2 rounded-full transition-none ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="text-xs mt-1.5 text-right">
+                  {isBreaching ? (
+                    <span className="text-red-400 font-medium">
+                      {staleSecs - HEARTBEAT_MAX}s past threshold — agent will settle as BREACH
+                    </span>
+                  ) : (
+                    <span className="text-gray-600">
+                      {HEARTBEAT_MAX - staleSecs}s until breach threshold
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── SettlementCard ───────────────────────────────────────────────────────────
+
 function SettlementCard({ entry }: { entry: MergedEntry }) {
-  // New entries: verdictMode is 'groq' or 'local-fallback'
-  // Old entries: no verdictMode field, treat groqReasoning as legacy AI decision
-  const isGroq    = entry.verdictMode === 'groq'
-  const isLegacy  = !entry.verdictMode && !!entry.groqReasoning
-  const isLocal   = entry.verdictMode === 'local-fallback'
+  const isGroq   = entry.verdictMode === 'groq'
+  const isLegacy = !entry.verdictMode && !!entry.groqReasoning
+  const isLocal  = entry.verdictMode === 'local-fallback'
   return (
     <div className={`rounded-xl border p-5 ${
       entry.compliant ? 'bg-green-950/20 border-green-900/50' : 'bg-red-950/20 border-red-900/50'
@@ -228,10 +383,13 @@ function SettlementCard({ entry }: { entry: MergedEntry }) {
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function ActivityPage() {
-  const publicClient   = usePublicClient()
+  const publicClient = usePublicClient()
   const [agentProofs,  setAgentProofs]  = useState<AgentProof[]>([])
   const [chainEvents,  setChainEvents]  = useState<ChainEvent[]>([])
+  const [monitors,     setMonitors]     = useState<ActiveLeaseMonitor[]>([])
   const [agentStatus,  setAgentStatus]  = useState<any>(null)
   const [loading,      setLoading]      = useState(true)
   const [lastRefresh,  setLastRefresh]  = useState<Date | null>(null)
@@ -262,20 +420,55 @@ export default function ActivityPage() {
     } catch {}
   }, [publicClient])
 
+  const fetchActiveLeases = useCallback(async () => {
+    if (!publicClient || !REGISTRY) return
+    try {
+      const total = await publicClient.readContract({
+        address: ESCROW, abi: LEASE_COUNT_ABI, functionName: 'leaseCount',
+      })
+      const count = Number(total)
+      const found: ActiveLeaseMonitor[] = []
+      for (let id = 1; id <= count; id++) {
+        const lease = await publicClient.readContract({
+          address: ESCROW, abi: GET_LEASE_ABI, functionName: 'getLease', args: [BigInt(id)],
+        }) as any
+        if (lease.status !== 0) continue  // 0 = Active (LeaseStatus enum)
+        const machine = await publicClient.readContract({
+          address: REGISTRY, abi: GET_MACHINE_ABI, functionName: 'getMachine', args: [lease.machineId],
+        }) as any
+        found.push({
+          leaseId:      id,
+          machineId:    Number(lease.machineId),
+          buyer:        lease.buyer,
+          provider:     lease.provider,
+          hardwareClass: machine.hardwareClass || '',
+          region:        machine.region || '',
+          epochDuration: Number(lease.epochDuration),
+          totalEpochs:   Number(lease.totalEpochs),
+          epochsSettled: Number(lease.epochsSettled),
+          lastHeartbeat: Number(machine.lastHeartbeat),
+        })
+      }
+      setMonitors(found)
+    } catch (e) {
+      console.error('fetchActiveLeases:', e)
+    }
+  }, [publicClient])
+
   const refresh = useCallback(async () => {
     setLoading(true)
-    await Promise.all([fetchAgentData(), fetchChainEvents()])
+    await Promise.all([fetchAgentData(), fetchChainEvents(), fetchActiveLeases()])
     setLastRefresh(new Date()); setLoading(false); setCountdown(15)
-  }, [fetchAgentData, fetchChainEvents])
+  }, [fetchAgentData, fetchChainEvents, fetchActiveLeases])
 
   useEffect(() => { refresh() }, [publicClient])
   useEffect(() => { const t = setInterval(refresh, 15_000); return () => clearInterval(t) }, [refresh])
-  useEffect(() => { const t = setInterval(() => setCountdown(c => Math.max(0,c-1)),1000); return ()=>clearInterval(t) }, [lastRefresh])
+  useEffect(() => { const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000); return () => clearInterval(t) }, [lastRefresh])
 
   const entries = useMemo<MergedEntry[]>(() => {
     const map = new Map<string, MergedEntry>()
     agentProofs.forEach(p => {
-      map.set(`${p.leaseId}-${p.epoch}`, { ...p, key:`${p.leaseId}-${p.epoch}`, proofHash: p.proofHash ?? undefined })
+      map.set(`${p.leaseId}-${p.epoch}`, { ...p, key: `${p.leaseId}-${p.epoch}`, proofHash: p.proofHash ?? undefined })
     })
     chainEvents.forEach(e => {
       const key = `${e.leaseId}-${e.epoch}`; const ex = map.get(key)
@@ -283,49 +476,47 @@ export default function ActivityPage() {
     })
     return [...map.values()]
       .filter(e => e.leaseId && e.epoch !== undefined && e.epoch !== null)
-      .sort((a,b) => {
+      .sort((a, b) => {
         if (a.settledAt && b.settledAt) return new Date(b.settledAt).getTime() - new Date(a.settledAt).getTime()
-        return Number(b.blockNumber||0) - Number(a.blockNumber||0)
+        return Number(b.blockNumber || 0) - Number(a.blockNumber || 0)
       })
   }, [agentProofs, chainEvents])
 
-  // verdictMode='groq' = confirmed Groq call (new agent)
-  // groqReasoning present without verdictMode = legacy entry (still AI-settled, just pre-versioning)
-  const groqCount = entries.filter(e =>
-    e.verdictMode === 'groq' || (e.groqReasoning && e.verdictMode === undefined)
-  ).length
-  const localCount = entries.filter(e => e.verdictMode === 'local-fallback').length
+  const groqCount     = entries.filter(e => e.verdictMode === 'groq' || (e.groqReasoning && e.verdictMode === undefined)).length
+  const localCount    = entries.filter(e => e.verdictMode === 'local-fallback').length
   const compliantCount = entries.filter(e => e.compliant).length
-  const avgConf        = entries.length > 0
-    ? Math.round(entries.reduce((s,e)=>s+(e.groqConfidence??75),0)/entries.length) : null
+  const avgConf       = entries.length > 0
+    ? Math.round(entries.reduce((s, e) => s + (e.groqConfidence ?? 75), 0) / entries.length) : null
 
   return (
     <div className="min-h-screen">
       <Navbar/>
       <div className="max-w-3xl mx-auto px-6 py-12">
+        {/* Page header */}
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold mb-1">Agent Activity</h1>
             <p className="text-gray-400 text-sm">
-              Live feed of Groq-verified epoch settlements. Each verdict is stored on-chain as a proof hash.
+              Live SLA monitoring and Groq-verified epoch settlements. Every verdict is anchored to an on-chain proof hash.
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-600">Refresh in {countdown}s</span>
             <button onClick={refresh} disabled={loading}
               className="flex items-center gap-2 border border-gray-700 hover:border-gray-500 px-4 py-2 rounded-lg text-sm transition disabled:opacity-50">
-              <RefreshCw size={14} className={loading?'animate-spin':''}/>Refresh
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''}/>Refresh
             </button>
           </div>
         </div>
 
+        {/* Agent status banner */}
         {agentStatus && (
           <div className={`rounded-xl p-4 border mb-6 text-sm ${
             agentStatus.lastError ? 'bg-red-950/30 border-red-900/50' : 'bg-green-950/30 border-green-900/50'
           }`}>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${agentStatus.lastError?'bg-red-400':'bg-green-400'} animate-pulse`}/>
+                <div className={`w-2 h-2 rounded-full ${agentStatus.lastError ? 'bg-red-400' : 'bg-green-400'} animate-pulse`}/>
                 <span className="font-medium">Agent {agentStatus.lastError ? 'Error' : 'Online'}</span>
                 <span className="text-gray-500 text-xs font-mono uppercase">{agentStatus.mode}</span>
               </div>
@@ -343,18 +534,22 @@ export default function ActivityPage() {
           </div>
         )}
 
+        {/* ── LIVE MONITORING ── */}
+        <MonitorSection leases={monitors}/>
+
+        {/* Summary stats */}
         {entries.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {[
-              { label:'Total Epochs',   val: entries.length,   color:'text-white',     bg:'bg-gray-900 border-gray-800' },
-              { label:'Compliant',      val: compliantCount,   color:'text-green-400', bg:'bg-green-950/30 border-green-900/50' },
-              { label:'Breaches',       val: entries.length-compliantCount, color:'text-red-400', bg:'bg-red-950/30 border-red-900/50' },
+              { label: 'Total Epochs',  val: entries.length,           color: 'text-white',     bg: 'bg-gray-900 border-gray-800' },
+              { label: 'Compliant',     val: compliantCount,           color: 'text-green-400', bg: 'bg-green-950/30 border-green-900/50' },
+              { label: 'Breaches',      val: entries.length - compliantCount, color: 'text-red-400', bg: 'bg-red-950/30 border-red-900/50' },
               {
                 label: groqCount > 0
-                  ? `Groq oracle${avgConf!==null?' · '+avgConf+'% avg conf':''}`
+                  ? `Groq oracle${avgConf !== null ? ' · ' + avgConf + '% avg conf' : ''}`
                   : localCount > 0 ? 'Local fallback' : 'AI Decisions',
                 val: groqCount > 0 ? groqCount : entries.length,
-                color:'text-purple-400', bg:'bg-purple-950/30 border-purple-900/50',
+                color: 'text-purple-400', bg: 'bg-purple-950/30 border-purple-900/50',
                 icon: <Brain size={16}/>,
               },
             ].map(({ label, val, color, bg, icon }) => (
@@ -368,6 +563,7 @@ export default function ActivityPage() {
           </div>
         )}
 
+        {/* Settlement feed */}
         {loading && entries.length === 0 ? (
           <div className="flex items-center justify-center py-24 text-gray-500">
             <Loader2 size={24} className="animate-spin mr-3"/>Fetching agent data…
