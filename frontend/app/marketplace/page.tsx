@@ -8,7 +8,7 @@ import { Navbar } from '@/components/Navbar'
 import { parseEther, keccak256, toBytes, formatEther } from 'viem'
 import {
   Cpu, MapPin, ExternalLink, Loader2, CheckCircle,
-  Shield, Copy, AlertTriangle, Clock, Activity, Server,
+  Shield, Copy, Clock, Activity, Server,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -66,8 +66,6 @@ const ESCROW_ABI = [
       { name: 'aiQuoteHash',   type: 'bytes32' },
     ],
     outputs: [{ type: 'uint256' }] },
-  { name: 'raiseDispute', type: 'function', stateMutability: 'nonpayable',
-    inputs: [{ name: 'leaseId', type: 'uint256' }], outputs: [] },
 ] as const
 
 type Machine = {
@@ -162,8 +160,6 @@ function MyLeaseCard({ leaseId }: { leaseId: bigint }) {
     args: lease ? [lease.machineId] : undefined,
     query: { enabled: !!lease },
   })
-  const { writeContract, data: hash, isPending } = useWriteContract()
-  const { isSuccess } = useWaitForTransactionReceipt({ hash })
 
   if (!lease || !machine) return null
 
@@ -274,24 +270,6 @@ function MyLeaseCard({ leaseId }: { leaseId: bigint }) {
         )}
       </div>
 
-      {/* Dispute: only for active leases with remaining epochs */}
-      {isActive && epochsRemaining > 0 && (
-        <div className="px-5 py-3 border-t border-gray-800 flex justify-end">
-          {isSuccess ? (
-            <span className="text-xs text-yellow-400 flex items-center gap-1">
-              <AlertTriangle size={11}/>Dispute raised
-            </span>
-          ) : (
-            <button
-              onClick={() => writeContract({ address: ESCROW, abi: ESCROW_ABI, functionName: 'raiseDispute', args: [leaseId] })}
-              disabled={isPending}
-              className="text-xs flex items-center gap-1.5 border border-red-800 text-red-400 hover:bg-red-950/30 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
-              {isPending ? <Loader2 size={11} className="animate-spin"/> : <AlertTriangle size={11}/>}
-              Raise Dispute
-            </button>
-          )}
-        </div>
-      )}
     </div>
   )
 }
