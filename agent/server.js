@@ -3,7 +3,7 @@ const http   = require('http')
 const ethers = require('ethers')
 const Groq   = require('groq-sdk')
 
-const { scoreMachineRisk }               = require('./riskScorer')
+const { scoreMachineRisk }                = require('./riskScorer')
 const { findAvailableLease, settleEpoch } = require('./settlementBot')
 const {
   listProofRecords,
@@ -50,42 +50,40 @@ async function getProviderReputation(providerAddress) {
   if (!repAddr) return { score: 500, rate: 100, total: 0 }
   try {
     const provider = new ethers.JsonRpcProvider(RPC_URL)
-    const rep = new ethers.Contract(repAddr, REPUTATION_ABI, provider)
+    const rep      = new ethers.Contract(repAddr, REPUTATION_ABI, provider)
     const [score, rate, total] = await Promise.all([
       rep.getScore(providerAddress),
       rep.getFulfillmentRate(providerAddress),
       rep.totalLeases(providerAddress),
     ])
-    return {
-      score:   Number(score),
-      rate:    Number(rate),
-      total:   Number(total),
-    }
+    return { score: Number(score), rate: Number(rate), total: Number(total) }
   } catch (e) {
     console.log(`  Reputation read failed: ${e.message}`)
     return { score: 500, rate: 100, total: 0 }
   }
 }
 
-// ─── Groq Epoch Evaluation ────────────────────────────────────────────────────
-function localEpochEval(staleSecs, epochHeartbeatOk) {
-  const compliant = epochHeartbeatOk
+// ─── Epoch Evaluation ─────────────────────────────────────────────────────────
+function localEpochEval(staleSecs, effectiveWindow) {
+  const compliant = staleSecs <= effectiveWindow
   return {
     compliant,
     reasoning: compliant
-      ? `Heartbeat received within epoch window (${staleSecs}s ago). Provider met uptime obligation.`
-      : `No heartbeat during epoch window — last heartbeat was ${staleSecs}s ago, before this epoch began. Provider did not meet uptime obligation.`,
+      ? `Heartbeat is ${staleSecs}s old, within the ${effectiveWindow}s SLA window. Provider met uptime obligation.`
+      : `Heartbeat is ${staleSecs}s old, exceeding the ${effectiveWindow}s SLA window. Provider missed uptime obligation.`,
     confidence: compliant ? 90 : 95,
-    factors: compliant ? ['heartbeat_fresh', 'sla_met'] : ['heartbeat_stale', 'epoch_window_missed'],
+    factors:    compliant
+      ? ['heartbeat_fresh', 'sla_met']
+      : ['heartbeat_stale', 'sla_violated'],
     mode: 'local-fallback',
   }
 }
 
 async function evaluateEpochWithGroq({
-  staleSecs, epochHeartbeatOk, epochStart, machine, repScore, repRate, repTotal,
+  staleSecs, effectiveWindow, machine, repScore, repRate, repTotal,
   leaseId, epoch, totalEpochs,
 }) {
-  if (!process.env.GROQ_API_KEY) return localEpochEval(staleSecs, epochHeartbeatOk)
+  if (!process.env.GROQ_API_KEY) return localEpochEval(staleSecs, effectiveWindow)
 
   const ageHours  = Math.max(0, Math.floor((Date.now() / 1000 - Number(machine.registeredAt)) / 3600))
   const hasAttest = Boolean(machine.attestationURI)
@@ -96,24 +94,23 @@ Your verdict triggers an irreversible blockchain transaction: COMPLIANT releases
 EPOCH DATA:
 - Lease #${leaseId} | Epoch ${epoch + 1} of ${totalEpochs}
 - Machine: ${machine.hardwareClass} | Region: ${machine.region}
-- Heartbeat age: ${staleSecs}s (SLA limit: ${HEARTBEAT_MAX}s)
-- Epoch window: started at t=${epochStart} — provider heartbeat ${epochHeartbeatOk ? 'arrived WITHIN' : 'did NOT arrive during'} this epoch
+- Heartbeat age: ${staleSecs}s (SLA window for this lease: ${effectiveWindow}s)
 - Provider reputation: ${repScore}/1000 | Fulfillment rate: ${repRate}% over ${repTotal} leases
 - Machine age: ${ageHours}h registered
 - Attestation URI: ${hasAttest ? 'PROVIDED' : 'MISSING'}
 
 SETTLEMENT RULES:
-1. PRIMARY: provider did not heartbeat during the epoch window → BREACH (hard SLA violation, non-negotiable)
-2. SECONDARY: if heartbeat arrived in epoch window, consider reputation:
+1. PRIMARY: heartbeat older than ${effectiveWindow}s → BREACH (hard SLA violation, non-negotiable)
+2. SECONDARY: if heartbeat is fresh, consider reputation:
    - repScore < 200 with repTotal > 3 → flag but still COMPLIANT (heartbeat proof wins)
-   - All other cases with valid epoch heartbeat → COMPLIANT
-3. Do NOT flip a valid-epoch-heartbeat epoch to BREACH based on reputation alone.
+   - All other cases with fresh heartbeat → COMPLIANT
+3. Do NOT flip a fresh-heartbeat epoch to BREACH based on reputation alone.
 
 Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
 {"compliant": true, "reasoning": "one clear sentence explaining the verdict", "confidence": 87, "factors": ["heartbeat_fresh", "reputation_stable"]}`
 
   try {
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    const groq     = new Groq({ apiKey: process.env.GROQ_API_KEY })
     const response = await groq.chat.completions.create({
       model:       'llama-3.3-70b-versatile',
       messages:    [{ role: 'user', content: prompt }],
@@ -126,7 +123,7 @@ Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
 
     if (typeof parsed.compliant !== 'boolean') throw new Error('invalid compliant field')
 
-    const hardBreach     = !epochHeartbeatOk  // epoch-relative: did provider heartbeat during this epoch?
+    const hardBreach     = staleSecs > effectiveWindow
     const finalCompliant = hardBreach ? false : Boolean(parsed.compliant)
 
     return {
@@ -144,7 +141,7 @@ Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
     }
   } catch (e) {
     console.log(`  Groq epoch eval failed (${e.message}) — using local fallback`)
-    return localEpochEval(staleSecs, epochHeartbeatOk)
+    return localEpochEval(staleSecs, effectiveWindow)
   }
 }
 
@@ -175,11 +172,9 @@ async function tick() {
 
     // 1. Read machine heartbeat from chain
     const machine          = await getMachine(machineId)
-    const nowSecs          = Math.floor(Date.now() / 1000)
-    const staleSecs        = nowSecs - Number(machine.lastHeartbeat)
-    const epochStart       = Number(lease.startTime) + (epoch * Number(lease.epochDuration))
-    const epochHeartbeatOk = Number(machine.lastHeartbeat) >= epochStart
-    console.log(`  Heartbeat: ${staleSecs}s old | epoch window started at t=${epochStart} | heartbeat in window: ${epochHeartbeatOk}`)
+    const staleSecs        = Math.floor(Date.now() / 1000) - Number(machine.lastHeartbeat)
+    const effectiveWindow  = Math.min(HEARTBEAT_MAX, Number(lease.epochDuration))
+    console.log(`  Heartbeat: ${staleSecs}s old | SLA window: ${effectiveWindow}s (min of ${HEARTBEAT_MAX}s max and ${Number(lease.epochDuration)}s epoch duration)`)
 
     // 2. Read reputation from chain
     const rep = await getProviderReputation(machine.provider)
@@ -189,12 +184,11 @@ async function tick() {
     console.log('  Calling Groq oracle for epoch verdict…')
     const verdict = await evaluateEpochWithGroq({
       staleSecs,
-      epochHeartbeatOk,
-      epochStart,
+      effectiveWindow,
       machine,
-      repScore:   rep.score,
-      repRate:    rep.rate,
-      repTotal:   rep.total,
+      repScore:    rep.score,
+      repRate:     rep.rate,
+      repTotal:    rep.total,
       leaseId,
       epoch,
       totalEpochs: Number(lease.totalEpochs),
@@ -218,20 +212,21 @@ async function tick() {
       console.log(`  Risk score: skipped (${e.message})`)
     }
 
-    // 5. Settle on-chain — settlementBot writes the base proof record internally
+    // 5. Settle on-chain
     const proofData = `lease-${leaseId}-epoch-${epoch}-ts-${Date.now()}-ok-${verdict.compliant}-conf-${verdict.confidence}`
     const result    = await settleEpoch(leaseId, epoch, verdict.compliant, proofData)
 
-    // 6. Enrich the proof record with Groq reasoning + risk metadata via proofStore
+    // 6. Enrich proof record with Groq reasoning + risk metadata
     const existingRecord = getProofRecord(String(leaseId), String(epoch))
     if (existingRecord) {
       saveProofRecord({
         ...existingRecord,
         machineId,
-        hardwareClass: machine.hardwareClass,
-        region:        machine.region,
-        provider:      machine.provider,
+        hardwareClass:  machine.hardwareClass,
+        region:         machine.region,
+        provider:       machine.provider,
         staleSecs,
+        effectiveWindow,
         groqReasoning:  verdict.reasoning,
         groqConfidence: verdict.confidence,
         groqFactors:    verdict.factors,
@@ -248,20 +243,20 @@ async function tick() {
       })
     }
 
-    // 7. Generate plain-language settlement rationale
+    // 7. Plain-language settlement rationale
     let settlementRationale = verdict.compliant
-      ? `Epoch ${epoch} compliant: heartbeat received within epoch window (${staleSecs}s ago), SLA met.`
-      : `Epoch ${epoch} breached: no heartbeat arrived during epoch window (last heartbeat ${staleSecs}s ago, before epoch start t=${epochStart}). Full refund issued to buyer.`
+      ? `Epoch ${epoch} compliant: heartbeat was ${staleSecs}s old, within the ${effectiveWindow}s SLA window.`
+      : `Epoch ${epoch} breached: heartbeat was ${staleSecs}s old, exceeding the ${effectiveWindow}s SLA window. Full refund issued to buyer.`
 
     if (process.env.GROQ_API_KEY) {
       try {
         const groq = new (require('groq-sdk'))({ apiKey: process.env.GROQ_API_KEY })
-        const r = await groq.chat.completions.create({
-          model: 'llama-3.3-70b-versatile',
+        const r    = await groq.chat.completions.create({
+          model:    'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content:
-            `Lease ${leaseId}, Epoch ${epoch}: heartbeat was ${staleSecs}s old, epoch window started at t=${epochStart}, provider heartbeat ${epochHeartbeatOk ? 'arrived within' : 'missed'} the window. Risk score ${riskResult.score}/100, verdict ${verdict.compliant ? 'COMPLIANT' : 'BREACH'}. Write one plain-English sentence explaining this settlement decision to a non-technical buyer.`
+            `Lease ${leaseId}, Epoch ${epoch}: heartbeat was ${staleSecs}s old (SLA window ${effectiveWindow}s), risk score ${riskResult.score}/100, verdict ${verdict.compliant ? 'COMPLIANT' : 'BREACH'}. Write one plain-English sentence explaining this settlement decision to a non-technical buyer.`
           }],
-          max_tokens: 80,
+          max_tokens:  80,
           temperature: 0.2,
         })
         settlementRationale = r.choices[0]?.message?.content?.trim() || settlementRationale
