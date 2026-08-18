@@ -52,7 +52,7 @@ Machine ID: 4  |  Lease ID: 5  |  Deployer: [0x72CD...3945](https://scan.botchai
 
 The AI agent handles four jobs:
 
-- **Risk scoring** - evaluates provider heartbeat freshness, platform age, and reputation score using Groq (llama3-70b-8192) with a local deterministic fallback. Risk scoring is intentionally deterministic: non-deterministic AI deciding whether escrow releases is a security liability, not a feature.
+- **Risk scoring** - evaluates provider heartbeat freshness, platform age, and reputation score using Groq (qwen/qwen3.6-27b) with a local deterministic fallback. Risk scoring is intentionally deterministic: non-deterministic AI deciding whether escrow releases is a security liability, not a feature.
 - **Quote generation** - prices capacity against centralised market rates and returns a plain-language rationale for the price.
 - **Epoch settlement** - reads the provider's last on-chain heartbeat, submits a proof to ProofRouter, then calls `settleEpoch()` on LeaseEscrow. Compliant epochs pay the provider; breaches refund the buyer in full.
 - **Settlement rationale** - after each epoch settles, Groq generates a one-sentence plain-language explanation of the decision (e.g. "Heartbeat was 420s stale against a 300s threshold - breach, full refund issued to buyer"). This is stored in the proof record and shown in the activity feed alongside the on-chain proof hash.
@@ -256,7 +256,7 @@ Deploy to Vercel by importing the GitHub repo and setting root directory to `fro
 ## Stack
 
 - **Contracts** - Solidity 0.8.24, Foundry, OpenZeppelin
-- **AI Agent** - Node.js, ethers.js v6, Groq (llama3-70b-8192) with local fallback, deployed on Render
+- **AI Agent** - Node.js, ethers.js v6, Groq (qwen/qwen3.6-27b) with local fallback, deployed on Render
 - **Frontend** - Next.js 14, wagmi v2, viem, RainbowKit, Tailwind CSS, deployed on Vercel
 
 ---

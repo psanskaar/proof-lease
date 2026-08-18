@@ -157,7 +157,7 @@ Return ONLY raw JSON, no markdown:
 
   try {
     const response = await groq.chat.completions.create({
-      model: "llama3-70b-8192",
+      model: "qwen/qwen3.6-27b",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 300,
       temperature: 0.1,

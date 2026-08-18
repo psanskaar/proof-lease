@@ -138,6 +138,11 @@ async function findAvailableLease() {
     try {
       const lease = await escrow.getLease(id);
       if (hasUnsettledEpochs(lease)) {
+        // Only settle after the current epoch window has fully elapsed
+        const epochEnd = Number(lease.startTime) +
+          (Number(lease.epochsSettled) + 1) * Number(lease.epochDuration)
+        const nowSecs = Math.floor(Date.now() / 1000)
+        if (nowSecs < epochEnd) continue  // epoch not done yet — check next lease
         return {
           leaseId: id.toString(),
           lease,
