@@ -42,6 +42,7 @@ type ActiveLeaseMonitor = {
   hardwareClass: string; region: string
   epochDuration: number; totalEpochs: number
   epochsSettled: number; lastHeartbeat: number
+  startTime: number
   effectiveWindow: number
 }
 
@@ -141,7 +142,8 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
       </div>
       <div className="space-y-3">
         {leases.map(lease => {
-          const staleSecs      = Math.max(0, now - lease.lastHeartbeat)
+          const refPoint       = Math.max(lease.lastHeartbeat, lease.startTime)
+          const staleSecs      = Math.max(0, now - refPoint)
           const effectiveWindow = lease.effectiveWindow
           const pct             = Math.min((staleSecs / effectiveWindow) * 100, 100)
           const isBreaching     = staleSecs > effectiveWindow
@@ -474,6 +476,7 @@ export default function ActivityPage() {
           totalEpochs:     Number(lease.totalEpochs),
           epochsSettled:   Number(lease.epochsSettled),
           lastHeartbeat:   Number(machine.lastHeartbeat),
+          startTime:       Number(lease.startTime),
           effectiveWindow: Math.min(HEARTBEAT_MAX, Number(lease.epochDuration)),
         })
       }

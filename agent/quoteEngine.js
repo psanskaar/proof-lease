@@ -160,7 +160,7 @@ Return ONLY raw JSON, no markdown:
     const response = await groq.chat.completions.create({
       model: "openai/gpt-oss-20b",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 300,
+      max_tokens: 500,
       temperature: 0.1,
     });
     const text = response.choices[0]?.message?.content?.trim() ?? "";

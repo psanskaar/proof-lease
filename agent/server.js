@@ -118,7 +118,7 @@ Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
     const response = await groq.chat.completions.create({
       model:       'openai/gpt-oss-20b',
       messages:    [{ role: 'user', content: prompt }],
-      max_tokens:  200,
+      max_tokens:  500,
       temperature: 0.1,
     })
     const text    = response.choices[0]?.message?.content?.trim() ?? ''
@@ -177,9 +177,11 @@ async function tick() {
 
     // 1. Read machine heartbeat from chain
     const machine         = await getMachine(machineId)
-    const staleSecs       = Math.floor(Date.now() / 1000) - Number(machine.lastHeartbeat)
+    const nowSecs         = Math.floor(Date.now() / 1000)
+    const refPoint        = Math.max(Number(machine.lastHeartbeat), Number(lease.startTime))
+    const staleSecs       = nowSecs - refPoint
     const effectiveWindow = Math.min(HEARTBEAT_MAX, Number(lease.epochDuration))
-    console.log(`  Heartbeat: ${staleSecs}s old (limit: ${effectiveWindow}s)`)
+    console.log(`  Heartbeat: ${staleSecs}s old (ref: ${refPoint === Number(lease.startTime) ? 'lease start' : 'last heartbeat'}, limit: ${effectiveWindow}s)`)
 
     // 2. Read reputation from chain
     const rep = await getProviderReputation(machine.provider)
@@ -211,6 +213,7 @@ async function tick() {
         registeredAt:    Number(machine.registeredAt),
         attestationURI:  machine.attestationURI,
         reputationScore: rep.score,
+        staleSecs,       // epoch-relative staleness — overrides raw lastHeartbeat in riskScorer
       })
       console.log(`  Risk score: ${riskResult.score}/100 (${riskResult.tier}) via ${riskResult.mode}`)
     } catch (e) {
@@ -262,7 +265,7 @@ async function tick() {
           messages: [{ role: 'user', content:
             `Lease ${leaseId}, Epoch ${epoch}: heartbeat was ${staleSecs}s old (SLA window ${effectiveWindow}s), risk score ${riskResult.score}/100, verdict ${verdict.compliant ? 'COMPLIANT' : 'BREACH'}. Write one plain-English sentence explaining this settlement decision to a non-technical buyer.`
           }],
-          max_tokens: 80,
+          max_tokens: 500,
           temperature: 0.2,
         })
         const raw = r.choices[0]?.message?.content?.trim() || ''

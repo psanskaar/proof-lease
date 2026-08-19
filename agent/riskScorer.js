@@ -82,7 +82,7 @@ function getLocalRiskScore(machine) {
 // ─── Groq response normaliser ─────────────────────────────────────────────────
 function normalizeGroqRiskResult(parsed, localResult, staleMins) {
   const score = parsed && Number(parsed.score);
-  if (!Number.isInteger(score) || score < 0 || score > 100) {
+  if (!Number.isFinite(score) || score < 0 || score > 100) {
     return {
       ...localResult,
       reasons: ["Groq returned invalid score — local scoring used", ...localResult.reasons].slice(0, 3),
@@ -111,6 +111,11 @@ function normalizeGroqRiskResult(parsed, localResult, staleMins) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 async function scoreMachineRisk(machine) {
+  // If caller passes staleSecs (epoch-relative), convert to mins and override lastHeartbeat
+  if (typeof machine.staleSecs === 'number') {
+    const fakeLast = Math.floor(Date.now() / 1000) - machine.staleSecs
+    machine = { ...machine, lastHeartbeat: fakeLast }
+  }
   const localResult = getLocalRiskScore(machine);
 
   // Already hard-blocked (no attestation) — don't waste a Groq call
@@ -165,7 +170,7 @@ Respond ONLY with raw JSON — no markdown, no explanation:
     const response = await groq.chat.completions.create({
       model:       "openai/gpt-oss-20b",
       messages:    [{ role: "user", content: prompt }],
-      max_tokens:  250,
+      max_tokens:  500,
       temperature: 0.1,
     });
     const text   = response.choices[0]?.message?.content?.trim() ?? "";
