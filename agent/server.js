@@ -1,12 +1,15 @@
 require('dotenv').config()
 const http   = require('http')
-const fs     = require('fs')
-const path   = require('path')
 const ethers = require('ethers')
 const Groq   = require('groq-sdk')
 
 const { scoreMachineRisk }               = require('./riskScorer')
 const { findAvailableLease, settleEpoch } = require('./settlementBot')
+const {
+  listProofRecords,
+  getProofRecord,
+  saveProofRecord,
+} = require('./proofStore')
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
@@ -26,21 +29,6 @@ const RPC_URL       = process.env.RPC_URL       || 'https://rpc.botchain.ai'
 const EXPLORER      = 'https://scan.botchain.ai'
 const IS_LIVE       = state.mode === 'live'
 
-// ─── Proof store ──────────────────────────────────────────────────────────────
-const PROOFS_FILE = path.join(__dirname, 'data', 'proofs.json')
-
-function readProofs() {
-  try { return JSON.parse(fs.readFileSync(PROOFS_FILE, 'utf8')) }
-  catch { return {} }
-}
-
-function writeProof(leaseId, epoch, entry) {
-  const all = readProofs()
-  all[`${leaseId}-${epoch}`] = { ...all[`${leaseId}-${epoch}`], ...entry }
-  fs.mkdirSync(path.dirname(PROOFS_FILE), { recursive: true })
-  fs.writeFileSync(PROOFS_FILE, JSON.stringify(all, null, 2))
-}
-
 // ─── Chain reads ──────────────────────────────────────────────────────────────
 const REGISTRY_ABI = [
   'function getMachine(uint256 machineId) external view returns (tuple(address provider, bytes32 hardwareHash, string region, string hardwareClass, string attestationURI, uint256 registeredAt, uint256 lastHeartbeat, uint8 status))',
@@ -50,9 +38,6 @@ const REPUTATION_ABI = [
   'function getFulfillmentRate(address provider) external view returns (uint256)',
   'function totalLeases(address provider) external view returns (uint256)',
 ]
-const ESCROW_ABI = [
-  'function getLease(uint256 leaseId) external view returns (tuple(uint256 machineId, address buyer, address provider, uint256 escrowBalance, uint256 epochRate, uint256 totalEpochs, uint256 epochsSettled, uint256 startTime, uint8 status))',
-]
 
 async function getMachine(machineId) {
   const provider = new ethers.JsonRpcProvider(RPC_URL)
@@ -61,7 +46,6 @@ async function getMachine(machineId) {
 }
 
 async function getProviderReputation(providerAddress) {
-  // Accept either REPUTATION_CONTRACT (agent .env) or NEXT_PUBLIC_REPUTATION (shared with frontend)
   const repAddr = process.env.REPUTATION_CONTRACT || process.env.NEXT_PUBLIC_REPUTATION
   if (!repAddr) return { score: 500, rate: 100, total: 0 }
   try {
@@ -84,9 +68,6 @@ async function getProviderReputation(providerAddress) {
 }
 
 // ─── Groq Epoch Evaluation ────────────────────────────────────────────────────
-// Groq IS the oracle — it receives all signals and returns a binding verdict.
-// Falls back to pure timestamp check only when Groq is unavailable.
-
 function localEpochEval(staleSecs) {
   const compliant = staleSecs <= HEARTBEAT_MAX
   return {
@@ -94,7 +75,7 @@ function localEpochEval(staleSecs) {
     reasoning: compliant
       ? `Heartbeat is ${staleSecs}s old, within the ${HEARTBEAT_MAX}s SLA threshold. Provider met uptime obligation.`
       : `Heartbeat is ${staleSecs}s old, exceeding the ${HEARTBEAT_MAX}s SLA threshold. Provider missed uptime obligation.`,
-    confidence: compliant ? 90 : 95, // high confidence for simple threshold breach
+    confidence: compliant ? 90 : 95,
     factors: compliant ? ['heartbeat_fresh', 'sla_met'] : ['heartbeat_stale', 'sla_violated'],
     mode: 'local-fallback',
   }
@@ -142,10 +123,8 @@ Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
     const clean  = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
     const parsed = JSON.parse(clean)
 
-    // Validate: boolean compliant, string reasoning, number confidence, string[] factors
     if (typeof parsed.compliant !== 'boolean') throw new Error('invalid compliant field')
 
-    // Hard override: Groq cannot mark COMPLIANT if heartbeat is beyond SLA
     const hardBreach = staleSecs > HEARTBEAT_MAX
     const finalCompliant = hardBreach ? false : Boolean(parsed.compliant)
 
@@ -198,11 +177,11 @@ async function tick() {
     const staleSecs = Math.floor(Date.now() / 1000) - Number(machine.lastHeartbeat)
     console.log(`  Heartbeat: ${staleSecs}s old (limit: ${HEARTBEAT_MAX}s)`)
 
-    // 2. Read REAL reputation from chain (was hardcoded 500 before)
+    // 2. Read reputation from chain
     const rep = await getProviderReputation(machine.provider)
     console.log(`  Reputation: ${rep.score}/1000 | ${rep.rate}% fulfillment over ${rep.total} leases`)
 
-    // 3. Groq evaluates all signals and returns the binding verdict
+    // 3. Groq oracle verdict
     console.log('  Calling Groq oracle for epoch verdict…')
     const verdict = await evaluateEpochWithGroq({
       staleSecs,
@@ -217,7 +196,7 @@ async function tick() {
     console.log(`  Groq verdict: ${verdict.compliant ? 'COMPLIANT ✅' : 'BREACH ❌'} (${verdict.confidence}% confidence) via ${verdict.mode}`)
     console.log(`  Reasoning: ${verdict.reasoning}`)
 
-    // 4. Groq risk score for the machine (pre-lease scoring, kept for UI display)
+    // 4. Machine risk score
     let riskResult = { score: 50, tier: 'MEDIUM', reasons: ['Fallback scoring'], mode: 'local' }
     try {
       riskResult = await scoreMachineRisk({
@@ -226,52 +205,46 @@ async function tick() {
         lastHeartbeat:   Number(machine.lastHeartbeat),
         registeredAt:    Number(machine.registeredAt),
         attestationURI:  machine.attestationURI,
-        reputationScore: rep.score,        // now passing real reputation score
+        reputationScore: rep.score,
       })
       console.log(`  Risk score: ${riskResult.score}/100 (${riskResult.tier}) via ${riskResult.mode}`)
     } catch (e) {
       console.log(`  Risk score: skipped (${e.message})`)
     }
 
-    // 5. Settle on-chain using Groq's verdict
+    // 5. Settle on-chain
     const proofData = `lease-${leaseId}-epoch-${epoch}-ts-${Date.now()}-ok-${verdict.compliant}-conf-${verdict.confidence}`
     const result    = await settleEpoch(leaseId, epoch, verdict.compliant, proofData)
 
-    // 6. Persist full proof including Groq reasoning, confidence, factors
-    writeProof(leaseId, epoch, {
-      leaseId:       String(leaseId),
-      epoch,
-      machineId,
-      hardwareClass: machine.hardwareClass,
-      region:        machine.region,
-      provider:      machine.provider,
-      buyer:         lease.buyer,
-      compliant:     verdict.compliant,
-      staleSecs,
-      // Groq epoch verdict
-      groqReasoning: verdict.reasoning,
-      groqConfidence: verdict.confidence,
-      groqFactors:   verdict.factors,
-      verdictMode:   verdict.mode,
-      // Machine risk score (separate from epoch verdict)
-      riskScore:     riskResult.score,
-      riskTier:      riskResult.tier,
-      riskReasons:   riskResult.reasons || [],
-      riskMode:      riskResult.mode,
-      // Provider reputation at time of settlement
-      repScore:      rep.score,
-      repRate:       rep.rate,
-      repTotal:      rep.total,
-      // On-chain hashes
-      proofData,
-      proofHash:     result.proofHash    || null,
-      routerTxHash:  result.routerTxHash || null,
-      escrowTxHash:  result.escrowTxHash || null,
-      settledAt:     new Date().toISOString(),
-      mode:          state.mode,
-    })
+    // 6. Enrich proof record with all metadata
+    const existingRecord = getProofRecord(String(leaseId), String(epoch))
+    if (existingRecord) {
+      saveProofRecord({
+        ...existingRecord,
+        machineId,
+        hardwareClass: machine.hardwareClass,
+        region:        machine.region,
+        provider:      machine.provider,
+        buyer:         String(lease.buyer),   // ← so buyer wallet sees it in Your Activity
+        compliant:     verdict.compliant,
+        staleSecs,
+        groqReasoning:  verdict.reasoning,
+        groqConfidence: verdict.confidence,
+        groqFactors:    verdict.factors,
+        verdictMode:    verdict.mode,
+        riskScore:      riskResult.score,
+        riskTier:       riskResult.tier,
+        riskReasons:    riskResult.reasons || [],
+        riskMode:       riskResult.mode,
+        repScore:       rep.score,
+        repRate:        rep.rate,
+        repTotal:       rep.total,
+        settledAt:      new Date().toISOString(),
+        mode:           state.mode,
+      })
+    }
 
-    // 7. Generate plain-language settlement rationale
+    // 7. Plain-language settlement rationale
     let settlementRationale = verdict.compliant
       ? `Epoch ${epoch} compliant: heartbeat was ${staleSecs}s old, within the ${HEARTBEAT_MAX}s SLA threshold.`
       : `Epoch ${epoch} breached: heartbeat was ${staleSecs}s old, exceeding the ${HEARTBEAT_MAX}s SLA limit. Full refund issued to buyer.`
@@ -291,7 +264,10 @@ async function tick() {
       } catch {}
     }
 
-    writeProof(leaseId, epoch, { settlementRationale })
+    const recordAfterRationale = getProofRecord(String(leaseId), String(epoch))
+    if (recordAfterRationale) {
+      saveProofRecord({ ...recordAfterRationale, settlementRationale })
+    }
 
     if (result.escrowTxHash) {
       console.log(`  ✅ ${EXPLORER}/tx/${result.escrowTxHash}`)
@@ -327,22 +303,22 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return }
 
   if (req.url === '/' || req.url === '/health') {
+    const settledCount = listProofRecords().filter(p => p.escrowTxHash).length
     return json(res, 200, {
       status:         state.lastError ? 'error' : 'ok',
       mode:           state.mode,
       uptime:         Math.floor((Date.now() - new Date(state.startTime)) / 1000) + 's',
       startTime:      state.startTime,
-      lastTick:       state.lastTick,
+      lastTime:       state.lastTick,
       lastTickStatus: state.lastTickStatus,
       tickCount:      state.tickCount,
-      leasesSettled:  state.leasesSettled,
+      leasesSettled:  settledCount,
       lastError:      state.lastError,
     })
   }
 
   if (req.url === '/proofs') {
-    const all    = readProofs()
-    const proofs = Object.values(all).sort(
+    const proofs = listProofRecords().sort(
       (a, b) => new Date(b.settledAt || 0) - new Date(a.settledAt || 0)
     )
     return json(res, 200, { count: proofs.length, proofs })
@@ -350,7 +326,7 @@ const server = http.createServer((req, res) => {
 
   const m = req.url.match(/^\/proofs\/(\d+)\/(\d+)$/)
   if (m) {
-    const entry = readProofs()[`${m[1]}-${m[2]}`]
+    const entry = getProofRecord(m[1], m[2])
     if (!entry) return json(res, 404, { error: 'not found' })
     return json(res, 200, entry)
   }
