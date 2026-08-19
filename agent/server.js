@@ -116,7 +116,7 @@ Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
     const response = await groq.chat.completions.create({
-      model:       'qwen/qwen3-27b',
+      model:       'openai/gpt-oss-20b',
       messages:    [{ role: 'user', content: prompt }],
       max_tokens:  200,
       temperature: 0.1,
@@ -258,7 +258,7 @@ async function tick() {
       try {
         const groq = new (require('groq-sdk'))({ apiKey: process.env.GROQ_API_KEY })
         const r = await groq.chat.completions.create({
-          model: 'qwen/qwen3-27b',
+          model: 'openai/gpt-oss-20b',
           messages: [{ role: 'user', content:
             `Lease ${leaseId}, Epoch ${epoch}: heartbeat was ${staleSecs}s old (SLA window ${effectiveWindow}s), risk score ${riskResult.score}/100, verdict ${verdict.compliant ? 'COMPLIANT' : 'BREACH'}. Write one plain-English sentence explaining this settlement decision to a non-technical buyer.`
           }],
