@@ -110,6 +110,7 @@ function normalizeGroqQuote(parsed, localQuote, req) {
 
 function parseJsonResponse(text, fallback) {
   const cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
@@ -157,7 +158,7 @@ Return ONLY raw JSON, no markdown:
 
   try {
     const response = await groq.chat.completions.create({
-      model: "qwen/qwen3.6-27b",
+      model: "qwen/qwen3-27b",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 300,
       temperature: 0.1,

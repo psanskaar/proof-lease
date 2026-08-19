@@ -10,6 +10,7 @@ function staleMinsToLabel(mins) {
 
 function parseJsonResponse(text, fallback) {
   const cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
@@ -162,7 +163,7 @@ Respond ONLY with raw JSON — no markdown, no explanation:
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     const response = await groq.chat.completions.create({
-      model:       "qwen/qwen3.6-27b",
+      model:       "qwen/qwen3-27b",
       messages:    [{ role: "user", content: prompt }],
       max_tokens:  250,
       temperature: 0.1,

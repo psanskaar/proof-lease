@@ -52,7 +52,7 @@ Machine ID: 4  |  Lease ID: 5  |  Deployer: [0x72CD...3945](https://scan.botchai
 
 The AI agent handles four jobs:
 
-- **Risk scoring** - evaluates provider heartbeat freshness, platform age, and reputation score using Groq (qwen/qwen3.6-27b) with a local deterministic fallback. Risk scoring is intentionally deterministic: non-deterministic AI deciding whether escrow releases is a security liability, not a feature.
+- **Risk scoring** - evaluates provider heartbeat freshness, platform age, and reputation score using Groq (llama-3.3-70b) with a local deterministic fallback. Risk scoring is intentionally deterministic: non-deterministic AI deciding whether escrow releases is a security liability, not a feature.
 - **Quote generation** - prices capacity against centralised market rates and returns a plain-language rationale for the price.
 - **Epoch settlement** - reads the provider's last on-chain heartbeat, submits a proof to ProofRouter, then calls `settleEpoch()` on LeaseEscrow. Compliant epochs pay the provider; breaches refund the buyer in full.
 - **Settlement rationale** - after each epoch settles, Groq generates a one-sentence plain-language explanation of the decision (e.g. "Heartbeat was 420s stale against a 300s threshold - breach, full refund issued to buyer"). This is stored in the proof record and shown in the activity feed alongside the on-chain proof hash.
@@ -165,7 +165,11 @@ BOT Chain's 0.75-second blocks and near-zero fees make epoch-by-epoch proof sett
 
 ## Known Limitations (MVP scope)
 
-`touchHeartbeat` in AssetRegistry is currently permissionless - any address can update any machine's timestamp. In a production deployment this would be restricted to the machine's registered provider. Similarly, `ProofRouter.submitProof` would be gated to the agent oracle address. These are intentional prototype simplifications; the settlement logic that actually controls fund movement is correctly access-controlled via `onlyAgent` on `LeaseEscrow.settleEpoch()`.
+**Permissionless heartbeat and proof submission** — `touchHeartbeat` in AssetRegistry is currently permissionless; any address can update any machine's timestamp. In a production deployment this would be restricted to the machine's registered provider. Similarly, `ProofRouter.submitProof` would be gated to the agent oracle address. These are intentional prototype simplifications; the settlement logic that actually controls fund movement is correctly access-controlled via `onlyAgent` on `LeaseEscrow.settleEpoch()`.
+
+**Heartbeat ≠ proof of work** — the SLA oracle verifies machine liveness via on-chain heartbeats, not actual compute delivery. A provider could send heartbeats without serving the buyer's workload. Full cryptographic proof of compute is the planned integration point with BOT Chain's vCompute layer; ProofLease is purpose-built to plug into that verification layer when it ships.
+
+**Hardware verification not yet enforced** — registered hardware class and region are self-reported by the provider and not cryptographically verified on-chain. Trusted hardware attestation (e.g. TPM or TEE-based remote attestation) will be integrated alongside the vCompute layer, allowing the AI oracle to factor verified hardware identity into settlement decisions rather than relying on the provider-supplied `hardwareHash`.
 
 ---
 

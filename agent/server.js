@@ -114,13 +114,14 @@ Return ONLY raw JSON — no markdown, no explanation outside the JSON object:
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
     const response = await groq.chat.completions.create({
-      model:       'qwen/qwen3.6-27b',
+      model:       'qwen/qwen3-27b',
       messages:    [{ role: 'user', content: prompt }],
       max_tokens:  200,
       temperature: 0.1,
     })
-    const text   = response.choices[0]?.message?.content?.trim() ?? ''
-    const clean  = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+    const text    = response.choices[0]?.message?.content?.trim() ?? ''
+    const noThink = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+    const clean   = noThink.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
     const parsed = JSON.parse(clean)
 
     if (typeof parsed.compliant !== 'boolean') throw new Error('invalid compliant field')
@@ -253,14 +254,15 @@ async function tick() {
       try {
         const groq = new (require('groq-sdk'))({ apiKey: process.env.GROQ_API_KEY })
         const r = await groq.chat.completions.create({
-          model: 'qwen/qwen3.6-27b',
+          model: 'qwen/qwen3-27b',
           messages: [{ role: 'user', content:
             `Lease ${leaseId}, Epoch ${epoch}: heartbeat was ${staleSecs}s old (limit ${HEARTBEAT_MAX}s), risk score ${riskResult.score}/100, verdict ${verdict.compliant ? 'COMPLIANT' : 'BREACH'}. Write one plain-English sentence explaining this settlement decision to a non-technical buyer.`
           }],
           max_tokens: 80,
           temperature: 0.2,
         })
-        settlementRationale = r.choices[0]?.message?.content?.trim() || settlementRationale
+        const raw = r.choices[0]?.message?.content?.trim() || ''
+        settlementRationale = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim() || settlementRationale
       } catch {}
     }
 
