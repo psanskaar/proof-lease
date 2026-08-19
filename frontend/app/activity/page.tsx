@@ -42,6 +42,7 @@ type ActiveLeaseMonitor = {
   hardwareClass: string; region: string
   epochDuration: number; totalEpochs: number
   epochsSettled: number; lastHeartbeat: number
+  effectiveWindow: number
 }
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
@@ -140,10 +141,11 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
       </div>
       <div className="space-y-3">
         {leases.map(lease => {
-          const staleSecs   = Math.max(0, now - lease.lastHeartbeat)
-          const pct         = Math.min((staleSecs / HEARTBEAT_MAX) * 100, 100)
-          const isBreaching = staleSecs > HEARTBEAT_MAX
-          const isWarning   = staleSecs > HEARTBEAT_MAX * 0.66
+          const staleSecs      = Math.max(0, now - lease.lastHeartbeat)
+          const effectiveWindow = lease.effectiveWindow
+          const pct             = Math.min((staleSecs / effectiveWindow) * 100, 100)
+          const isBreaching     = staleSecs > effectiveWindow
+          const isWarning       = staleSecs > effectiveWindow * 0.66
           const barColor    = isBreaching ? 'bg-red-500' : isWarning ? 'bg-yellow-500' : 'bg-green-500'
           const nextEpoch   = lease.epochsSettled + 1
 
@@ -185,7 +187,7 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
               <div>
                 <div className="flex justify-between text-xs text-gray-600 mb-1">
                   <span>Heartbeat age</span>
-                  <span>{HEARTBEAT_MAX}s SLA threshold</span>
+                  <span>{effectiveWindow}s SLA threshold</span>
                 </div>
                 <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
                   <div
@@ -196,11 +198,11 @@ function MonitorSection({ leases }: { leases: ActiveLeaseMonitor[] }) {
                 <div className="text-xs mt-1.5 text-right">
                   {isBreaching ? (
                     <span className="text-red-400 font-medium">
-                      {staleSecs - HEARTBEAT_MAX}s past threshold — agent will settle as BREACH
+                      {staleSecs - effectiveWindow}s past threshold — agent will settle as BREACH
                     </span>
                   ) : (
                     <span className="text-gray-600">
-                      {HEARTBEAT_MAX - staleSecs}s until breach threshold
+                      {effectiveWindow - staleSecs}s until breach threshold
                     </span>
                   )}
                 </div>
@@ -468,10 +470,11 @@ export default function ActivityPage() {
           buyer: lease.buyer, provider: lease.provider,
           hardwareClass: machine.hardwareClass || '',
           region: machine.region || '',
-          epochDuration: Number(lease.epochDuration),
-          totalEpochs: Number(lease.totalEpochs),
-          epochsSettled: Number(lease.epochsSettled),
-          lastHeartbeat: Number(machine.lastHeartbeat),
+          epochDuration:   Number(lease.epochDuration),
+          totalEpochs:     Number(lease.totalEpochs),
+          epochsSettled:   Number(lease.epochsSettled),
+          lastHeartbeat:   Number(machine.lastHeartbeat),
+          effectiveWindow: Math.min(HEARTBEAT_MAX, Number(lease.epochDuration)),
         })
       }
       setMonitors(found)
@@ -516,16 +519,16 @@ export default function ActivityPage() {
   const myEntries = useMemo(() =>
     entries.filter(e => sameAddr(e.provider, address) || sameAddr(e.buyer, address)),
     [entries, address])
-  // Global feed shows every settlement — including your own.
-  // Previously this excluded entries where you were provider/buyer,
-  // which meant you could never see your own cards in the global tab.
-  const globalEntries = useMemo(() => entries, [entries])
+  const globalEntries = useMemo(() =>
+    entries.filter(e => !sameAddr(e.provider, address) && !sameAddr(e.buyer, address)),
+    [entries, address])
 
   const myMonitors     = useMemo(() =>
     monitors.filter(m => sameAddr(m.buyer, address) || sameAddr(m.provider, address)),
     [monitors, address])
-  // Same fix for active lease monitors.
-  const globalMonitors = useMemo(() => monitors, [monitors])
+  const globalMonitors = useMemo(() =>
+    monitors.filter(m => !sameAddr(m.buyer, address) && !sameAddr(m.provider, address)),
+    [monitors, address])
 
   // Stats (always over full set)
   const groqCount      = entries.filter(e => e.verdictMode === 'groq' || (e.groqReasoning && !e.verdictMode)).length
