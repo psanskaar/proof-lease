@@ -126,6 +126,10 @@ export default function Home() {
           <Link href="/provider"    className="text-gray-400 hover:text-white text-sm transition">Provide</Link>
           <Link href="/activity"    className="text-gray-400 hover:text-white text-sm transition">Activity</Link>
           <Link href="/verify"      className="text-gray-400 hover:text-white text-sm transition">Verify</Link>
+          <Link href="/vcompute"    className="flex items-center gap-1.5 text-purple-400 hover:text-purple-300 text-sm transition border border-purple-900/50 hover:border-purple-700 px-2.5 py-1 rounded-lg">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+            vCompute
+          </Link>
           <ConnectButton />
         </div>
       </nav>
@@ -158,6 +162,20 @@ export default function Home() {
           <Link href="/activity" className="border border-gray-700 hover:border-gray-500 px-8 py-3 rounded-lg font-medium text-gray-400 transition flex items-center gap-2">
             <Activity size={15}/>Watch Agent Live
           </Link>
+        </div>
+
+        {/* vCompute integration callout */}
+        <div className="mt-8 flex items-start justify-center gap-2 text-sm text-gray-500">
+          <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse shrink-0 mt-[5px]" />
+          <span className="max-w-sm text-left leading-relaxed">
+            ProofLease is being integrated as the SLA settlement &amp; marketplace layer for BOT
+            Chain&apos;s upcoming{' '}
+            <span className="text-purple-400 font-medium">vCompute</span>
+            {' '}— Verifiable Computation Layer.{' '}
+            <Link href="/vcompute" className="text-purple-400 hover:text-purple-300 underline underline-offset-2 transition">
+              See the integration plan →
+            </Link>
+          </span>
         </div>
       </div>
 

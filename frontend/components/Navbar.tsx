@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/provider',    label: 'Provide'      },
   { href: '/activity',    label: 'Activity'      },
   { href: '/verify',      label: 'Verify'        },
+  { href: '/vcompute',    label: 'vCompute',  highlight: true },
 ]
 
 export function Navbar() {
@@ -41,8 +42,24 @@ export function Navbar() {
 
         {/* Desktop nav links */}
         <div className="hidden md:flex items-center gap-1 mx-4">
-          {LINKS.map(({ href, label }) => {
+          {LINKS.map(({ href, label, highlight }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
+            if (highlight) {
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1.5 ${
+                    active
+                      ? 'bg-purple-900/60 text-purple-200 font-medium border border-purple-700'
+                      : 'text-purple-400 hover:text-purple-200 hover:bg-purple-900/40 border border-purple-900/50 hover:border-purple-700'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                  {label}
+                </Link>
+              )
+            }
             return (
               <Link
                 key={href}
@@ -84,8 +101,25 @@ export function Navbar() {
       {/* Mobile dropdown */}
       {open && (
         <div className="md:hidden fixed top-[57px] inset-x-0 z-30 bg-gray-950/98 border-b border-gray-800 px-4 py-3 flex flex-col gap-1 backdrop-blur">
-          {LINKS.map(({ href, label }) => {
+          {LINKS.map(({ href, label, highlight }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
+            if (highlight) {
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setOpen(false)}
+                  className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                    active
+                      ? 'bg-purple-900/60 text-purple-200 border border-purple-700'
+                      : 'text-purple-400 hover:text-purple-200 hover:bg-purple-900/40 border border-purple-900/40'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                  {label}
+                </Link>
+              )
+            }
             return (
               <Link
                 key={href}
