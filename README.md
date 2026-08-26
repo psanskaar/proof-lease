@@ -4,6 +4,8 @@
 
 Built for **BOT Chain Builder Challenge #2** - AI × RWA track.
 
+**[vCompute Integration](#vcompute-integration)** - See how ProofLease plugs into BOT Chain's Verifiable Computation Layer.
+
 ---
 
 ## Judge Path
@@ -18,30 +20,30 @@ Built for **BOT Chain Builder Challenge #2** - AI × RWA track.
 
 Contract addresses are identical on testnet and mainnet - same deployer wallet and nonce sequence produces deterministic EVM addresses.
 
-### Verified Transactions (Mainnet — full lifecycle)
+### Verified Transactions (Mainnet - full lifecycle)
 
 | Action | TX |
 |---|---|
 | Machine registered | [0x229951...f420](https://scan.botchain.ai/tx/0x229951e8d4a3482cd6c1862091c99df36116aa501762c674413bab91cf42f420) |
 | Lease created (0.005 BOT escrowed) | [0x472984...8b5b](https://scan.botchain.ai/tx/0x472984545f3769fbd1214ae74fcc57cb3e44f6a8f48b3d2b2cb781da62b88b5b) |
 | Proof submitted to ProofRouter (epoch 0) | [0x981b4c...b77e](https://scan.botchain.ai/tx/0x981b4c92c22c9a0138b0b68bc993a5a0ffd1738903e80ce442650a81087ab77e) |
-| Epoch 0 settled — compliant | [0x314a3a...34f9](https://scan.botchain.ai/tx/0x314a3ae5f8c7bc27bda3f25af22d9fbdb01b89a0aa3d5a34225025e05fa934f9) |
+| Epoch 0 settled - compliant | [0x314a3a...34f9](https://scan.botchain.ai/tx/0x314a3ae5f8c7bc27bda3f25af22d9fbdb01b89a0aa3d5a34225025e05fa934f9) |
 | Proof submitted to ProofRouter (epoch 1) | [0x49ea21...e04d](https://scan.botchain.ai/tx/0x49ea21df8ec41a877b63ad1c72b13a6860b9ee8b1a0a8008264ee2c4c5a3e04d) |
-| Epoch 1 settled — breach | [0xb8f019...d73a](https://scan.botchain.ai/tx/0xb8f01930218e5629f5e90e09fcc560a91a6d11a681ba59602073cadb9879d73a) |
+| Epoch 1 settled - breach | [0xb8f019...d73a](https://scan.botchain.ai/tx/0xb8f01930218e5629f5e90e09fcc560a91a6d11a681ba59602073cadb9879d73a) |
 | Provider withdrawal | [0x3d7c68...0f23](https://scan.botchain.ai/tx/0x3d7c6821b91c86116ae2ee5485acbbb3653660318a2f1732f5d219a98ba20f23) |
 
 Machine ID: 4  |  Lease ID: 5  |  Deployer: [0x72CD...3945](https://scan.botchain.ai/address/0x72CD637431ea7cE9374CAdeb4F036ae14a6f3945)
 
 <details>
-<summary>Testnet (Bohr) — same lifecycle, run prior to mainnet</summary>
+<summary>Testnet (Bohr) - same lifecycle, run prior to mainnet</summary>
 
 | Action | TX |
 |---|---|
 | Machine registered | [0xf89c...fcd](https://scan.bohr.life/tx/0xf89c9c8598f5bed215ff2d766ef3a588cd53219b79766e66cdd6b9441ba25fcd) |
 | Lease created (0.005 BOT escrowed) | [0x5a75...07](https://scan.bohr.life/tx/0x5a75a7aa1781280c73cd6d85c0a578153d5786d4385d42df9bd0de32f9549e07) |
 | Proof submitted to ProofRouter | [0x2e38...f3](https://scan.bohr.life/tx/0x2e3874621bde322c70338f1d3a4716a049cd12ec9aac3bcda7c11a60c78c03f3) |
-| Epoch 0 settled — compliant | [0x5f92...12](https://scan.bohr.life/tx/0x5f923d0d5db6341c4d7310b5458969b073c0543b7a83ce86aedc827a89788f12) |
-| Epoch 1 settled — breach | [0x8b7d...72](https://scan.bohr.life/tx/0x8b7deb06f5ded89fb27afcfa577cb3e3e56d57f33fcc3c4bc7f9e1d2e57ef272) |
+| Epoch 0 settled - compliant | [0x5f92...12](https://scan.bohr.life/tx/0x5f923d0d5db6341c4d7310b5458969b073c0543b7a83ce86aedc827a89788f12) |
+| Epoch 1 settled - breach | [0x8b7d...72](https://scan.bohr.life/tx/0x8b7deb06f5ded89fb27afcfa577cb3e3e56d57f33fcc3c4bc7f9e1d2e57ef272) |
 | Provider withdrawal | [0xc9e7...a6](https://scan.bohr.life/tx/0xc9e7242cabd84c70804dd26cb6fa911ff285ab65033da8aebbcb4d7e761979a6) |
 
 </details>
@@ -149,13 +151,13 @@ BOT Chain's 0.75-second blocks and near-zero fees make epoch-by-epoch proof sett
 
 ## vCompute Integration
 
-ProofLease is being built as the SLA settlement and marketplace layer for BOT Chain's **vCompute** — the Verifiable Computation Layer that onboards physical GPU and CPU hardware as DePIN nodes. Every contract, oracle, and reputation mechanism in ProofLease is designed to extend naturally into vCompute's attestation and proof-of-work infrastructure when it ships.
+ProofLease is being built as the SLA settlement and marketplace layer for BOT Chain's **vCompute** - the Verifiable Computation Layer that onboards physical GPU and CPU hardware as DePIN nodes. Every contract, oracle, and reputation mechanism in ProofLease is designed to extend naturally into vCompute's attestation and proof-of-work infrastructure when it ships.
 
 The frontend includes a dedicated **vCompute** section in the navbar (`/vcompute`) that documents the full integration plan for users and operators.
 
 ### Integration Phases
 
-#### Phase 1 — Heartbeat-Based SLA Settlement (Live now)
+#### Phase 1 - Heartbeat-Based SLA Settlement (Live now)
 
 ProofLease is already live on BOT Chain Mainnet. Hardware operators register machines as on-chain RWA assets, buyers escrow BOT, and the AI agent settles each epoch by reading heartbeat proofs from `AssetRegistry`. This is the foundation layer that vCompute will extend.
 
@@ -164,16 +166,16 @@ ProofLease is already live on BOT Chain Mainnet. Hardware operators register mac
 - Every decision stored as a `keccak256` proof hash in `ProofRouter`, independently verifiable
 - Full lifecycle proven on-chain: register → escrow → settle compliant → settle breach → withdraw
 
-#### Phase 2 — Cryptographic Proof of Compute Delivery (Planned — vCompute launch)
+#### Phase 2 - Cryptographic Proof of Compute Delivery (Planned - vCompute launch)
 
-The current heartbeat mechanism confirms machine liveness but not workload delivery. When vCompute ships its cryptographic proof-of-work layer, `ProofRouter.submitProof()` is designed to receive those proofs. The AI oracle will validate compute receipts — not just heartbeats — as part of each settlement decision.
+The current heartbeat mechanism confirms machine liveness but not workload delivery. When vCompute ships its cryptographic proof-of-work layer, `ProofRouter.submitProof()` is designed to receive those proofs. The AI oracle will validate compute receipts - not just heartbeats - as part of each settlement decision.
 
 - `ProofRouter.submitProof()` accepts arbitrary proof payloads; no contract changes needed
 - AI oracle settlement prompt will be extended to reason about execution receipt validity
 - Breach logic tightens: heartbeat staleness **or** missing compute receipt → buyer refund
 - Buyers gain SLA guarantees backed by real compute delivery proofs, not just uptime signals
 
-#### Phase 3 — Trusted Hardware Attestation via TEE / TPM (Planned — hardware attestation)
+#### Phase 3 - Trusted Hardware Attestation via TEE / TPM (Planned - hardware attestation)
 
 Hardware class and region are currently self-reported by providers. vCompute's trusted hardware attestation layer (TPM or TEE-based remote attestation) will populate the `hardwareHash` field in `AssetRegistry`, so the AI oracle can verify that a machine genuinely has the advertised GPU class.
 
@@ -182,7 +184,7 @@ Hardware class and region are currently self-reported by providers. vCompute's t
 - Providers with attested hardware earn lower risk scores → eligible for premium lease tiers
 - `Reputation` contract scores will reflect full attestation compliance history over time
 
-#### Phase 4 — Full DePIN Marketplace for vCompute Nodes (Planned — Compute Node Activation)
+#### Phase 4 - Full DePIN Marketplace for vCompute Nodes (Planned - Compute Node Activation)
 
 When BOT Chain's Compute Node Activation onboards physical GPU and CPU hardware as DePIN nodes, ProofLease becomes the public marketplace for that capacity: node operators list via the provider flow, buyers lease with BOT token, and the AI oracle enforces the SLA end-to-end. ProofLease is the monetisation layer for vCompute's supply side.
 
@@ -202,13 +204,13 @@ When BOT Chain's Compute Node Activation onboards physical GPU and CPU hardware 
 
 ### Design Decisions Made for vCompute Compatibility
 
-**`ProofRouter` accepts arbitrary proof data** — the `submitProof(leaseId, epoch, proofString)` interface is deliberately generic. The current `proofString` encodes heartbeat telemetry, but vCompute execution receipts can be serialised into the same field without a contract upgrade.
+**`ProofRouter` accepts arbitrary proof data** - the `submitProof(leaseId, epoch, proofString)` interface is deliberately generic. The current `proofString` encodes heartbeat telemetry, but vCompute execution receipts can be serialised into the same field without a contract upgrade.
 
-**AI oracle prompt is structured, not hardcoded** — the settlement agent constructs a prompt from on-chain state and passes it to the LLM. Adding vCompute proof validation is a prompt extension, not an architecture change.
+**AI oracle prompt is structured, not hardcoded** - the settlement agent constructs a prompt from on-chain state and passes it to the LLM. Adding vCompute proof validation is a prompt extension, not an architecture change.
 
-**`hardwareHash` is reserved in `AssetRegistry`** — the field exists in the machine struct today, set by the provider. The transition to vCompute-written attestation hashes requires only an access-control update to the setter, not a schema change.
+**`hardwareHash` is reserved in `AssetRegistry`** - the field exists in the machine struct today, set by the provider. The transition to vCompute-written attestation hashes requires only an access-control update to the setter, not a schema change.
 
-**Deterministic local fallback** — risk scoring has a local deterministic fallback that mirrors the Groq prompt logic. This means vCompute proof validation rules can be implemented in the fallback first, tested fully offline, then reflected in the LLM prompt — the same pattern used for the existing heartbeat logic.
+**Deterministic local fallback** - risk scoring has a local deterministic fallback that mirrors the Groq prompt logic. This means vCompute proof validation rules can be implemented in the fallback first, tested fully offline, then reflected in the LLM prompt - the same pattern used for the existing heartbeat logic.
 
 ---
 
@@ -230,13 +232,13 @@ When BOT Chain's Compute Node Activation onboards physical GPU and CPU hardware 
 
 ## Known Limitations (MVP scope)
 
-**Permissionless heartbeat and proof submission** — `touchHeartbeat` in AssetRegistry is currently permissionless; any address can update any machine's timestamp. In a production deployment this would be restricted to the machine's registered provider. Similarly, `ProofRouter.submitProof` would be gated to the agent oracle address. These are intentional prototype simplifications; the settlement logic that actually controls fund movement is correctly access-controlled via `onlyAgent` on `LeaseEscrow.settleEpoch()`.
+**Permissionless heartbeat and proof submission** - `touchHeartbeat` in AssetRegistry is currently permissionless; any address can update any machine's timestamp. In a production deployment this would be restricted to the machine's registered provider. Similarly, `ProofRouter.submitProof` would be gated to the agent oracle address. These are intentional prototype simplifications; the settlement logic that actually controls fund movement is correctly access-controlled via `onlyAgent` on `LeaseEscrow.settleEpoch()`.
 
-**Heartbeat ≠ proof of work** — the SLA oracle verifies machine liveness via on-chain heartbeats, not actual compute delivery. A provider could send heartbeats without serving the buyer's workload. Full cryptographic proof of compute is the planned integration point with BOT Chain's vCompute layer; ProofLease is purpose-built to plug into that verification layer when it ships.
+**Heartbeat ≠ proof of work** - the SLA oracle verifies machine liveness via on-chain heartbeats, not actual compute delivery. A provider could send heartbeats without serving the buyer's workload. Full cryptographic proof of compute is the planned integration point with BOT Chain's vCompute layer; ProofLease is purpose-built to plug into that verification layer when it ships.
 
-**Hardware verification not yet enforced** — registered hardware class and region are self-reported by the provider and not cryptographically verified on-chain. Trusted hardware attestation (e.g. TPM or TEE-based remote attestation) will be integrated alongside the vCompute layer, allowing the AI oracle to factor verified hardware identity into settlement decisions rather than relying on the provider-supplied `hardwareHash`.
+**Hardware verification not yet enforced** - registered hardware class and region are self-reported by the provider and not cryptographically verified on-chain. Trusted hardware attestation (e.g. TPM or TEE-based remote attestation) will be integrated alongside the vCompute layer, allowing the AI oracle to factor verified hardware identity into settlement decisions rather than relying on the provider-supplied `hardwareHash`.
 
-**SLA window is fixed, not epoch-relative** — the heartbeat staleness threshold is a flat 300s regardless of epoch duration. A lease with 60s epochs uses the same 300s SLA window, making the threshold effectively meaningless for short epochs. The correct behaviour is to scale the window with `epochDuration` (i.e. `effectiveWindow = min(HEARTBEAT_MAX, epochDuration)`), planned for v2.
+**SLA window is fixed, not epoch-relative** - the heartbeat staleness threshold is a flat 300s regardless of epoch duration. A lease with 60s epochs uses the same 300s SLA window, making the threshold effectively meaningless for short epochs. The correct behaviour is to scale the window with `epochDuration` (i.e. `effectiveWindow = min(HEARTBEAT_MAX, epochDuration)`), planned for v2.
 
 ---
 
