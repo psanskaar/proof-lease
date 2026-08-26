@@ -165,17 +165,14 @@ export default function Home() {
         </div>
 
         {/* vCompute integration callout */}
-        <div className="mt-8 flex items-start justify-center gap-2 text-sm text-gray-500">
-          <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse shrink-0 mt-[5px]" />
-          <span className="max-w-xs text-left leading-relaxed">
-            ProofLease is being integrated into BOT Chain&apos;s upcoming{' '}
-            <span className="text-purple-400 font-medium">vCompute</span>
-            {' '}layer as the SLA settlement &amp; compute marketplace.{' '}
-            <Link href="/vcompute" className="text-purple-400 hover:text-purple-300 underline underline-offset-2 transition whitespace-nowrap">
-              See the plan →
-            </Link>
-          </span>
-        </div>
+        <p className="mt-8 text-sm text-gray-500 text-center">
+          <span className="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse mr-2 align-middle" />
+          ProofLease is being integrated into BOT Chain&apos;s{' '}
+          <span className="text-purple-400 font-medium">vCompute</span> layer.{' '}
+          <Link href="/vcompute" className="text-purple-400 hover:text-purple-300 underline underline-offset-2 transition whitespace-nowrap">
+            See the plan →
+          </Link>
+        </p>
       </div>
 
       {/* Live stats bar */}
