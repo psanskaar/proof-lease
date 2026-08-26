@@ -197,7 +197,7 @@ setInterval(beat, 30_000)     // then every 30 seconds`
         <div className="px-6 pb-6 border-t border-gray-800 pt-4 space-y-4">
           <p className="text-sm text-gray-300">
             The AI agent checks your machine&apos;s heartbeat every epoch. If the heartbeat is more than
-            300 seconds stale when the agent runs, that epoch is marked{' '}
+            30 secs stale when the agent runs, that epoch is marked{' '}
             <span className="text-red-400 font-medium">BREACH</span> and the buyer is refunded.
             Keep heartbeat fresh and every compliant epoch pays you automatically.
           </p>
